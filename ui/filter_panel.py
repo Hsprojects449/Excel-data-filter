@@ -10,17 +10,18 @@ from PyQt6.QtWidgets import (
     QComboBox,
     QLineEdit,
     QLabel,
-    QScrollArea,
     QFrame,
     QRadioButton,
     QButtonGroup,
     QMessageBox,
+    QSizePolicy,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont, QIcon
-import polars as pl
+from PyQt6.QtCore import pyqtSignal
+from PyQt6.QtGui import QFont
 from typing import List, Dict, Any
 from loguru import logger
+from ui.unified_styles import UnifiedStyles
+from ui.simple_dropdown_styler import apply_green_dropdown_style
 
 
 class FilterRule(QFrame):
@@ -33,6 +34,11 @@ class FilterRule(QFrame):
         self.rule_id = rule_id
         self.columns = [col for col in columns if not col.lower().endswith(("_v1", "_uni"))]
         self.selected_column = selected_column  # Fixed column name
+        
+        # Ensure proper size for visibility
+        self.setMinimumHeight(50)
+        self.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Fixed)
+        
         self.setStyleSheet(
             """
             QFrame {
@@ -42,6 +48,7 @@ class FilterRule(QFrame):
                     stop:0 #ffffff, stop:1 #f8f9fa);
                 padding: 8px;
                 margin: 2px 0px;
+                min-height: 50px;
             }
             QFrame:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -106,84 +113,24 @@ class FilterRule(QFrame):
         self.operator_combo.setMinimumWidth(130)
         self.operator_combo.setMaximumWidth(160)
         self.operator_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self.operator_combo.setStyleSheet(
-            """
-            QComboBox {
-                padding: 6px 8px;
-                border: 2px solid #e9ecef;
-                border-radius: 8px;
-                background-color: #ffffff;
-                font-family: 'Segoe UI';
-                font-size: 12px;
-                font-weight: 500;
-                color: #495057;
-                min-height: 16px;
-            }
-            QComboBox:hover {
-                border: 2px solid #4CAF50;
-                background-color: #f8f9fa;
-            }
-            QComboBox:focus {
-                border: 2px solid #4CAF50;
-                background-color: #ffffff;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 25px;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border: none;
-                width: 12px;
-                height: 12px;
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #6c757d, stop:1 #495057);
-            }
-            QComboBox QAbstractItemView {
-                font-family: 'Segoe UI';
-                font-size: 12px;
-                padding: 4px;
-                background-color: #ffffff;
-                border: 2px solid #e9ecef;
-                border-radius: 8px;
-                selection-background-color: #4CAF50;
-                selection-color: white;
-            }
-        """
-        )
+        self.operator_combo.setStyleSheet(UnifiedStyles.get_combobox_style(font_size=12, min_height=16, min_width=130))
+        
+        # Add clean arrow and ultra green hover effects
+        # Apply simple green dropdown style
+        apply_green_dropdown_style(self.operator_combo)
         layout.addWidget(self.operator_combo, 0)
 
-        # Value input
+        # Value input with unified styling
         self.value_input = QLineEdit()
         self.value_input.setPlaceholderText("Enter value...")
         self.value_input.setMinimumWidth(160)
-        self.value_input.setStyleSheet(
-            """
-            QLineEdit {
-                padding: 8px 10px;
-                border: 2px solid #e9ecef;
-                border-radius: 8px;
-                background-color: #ffffff;
-                font-family: 'Segoe UI';
-                font-size: 12px;
-                color: #495057;
-                min-height: 16px;
-            }
-            QLineEdit:hover {
-                border: 2px solid #4CAF50;
-                background-color: #f8f9fa;
-            }
-            QLineEdit:focus {
-                border: 2px solid #4CAF50;
-                background-color: #ffffff;
-                outline: none;
-            }
+        self.value_input.setStyleSheet(UnifiedStyles.get_lineedit_style(font_size=12, min_height=16) + 
+                                       """
             QLineEdit::placeholder {
                 color: #adb5bd;
                 font-style: italic;
             }
-        """
-        )
+        """)
         layout.addWidget(self.value_input, 1)
 
         # Remove button
@@ -255,6 +202,12 @@ class FilterPanel(QWidget):
         super().__init__()
         self.filter_rules: List[FilterRule] = []
         self.columns: List[str] = []
+        
+        # Set size constraints - allow expansion but with reasonable limits
+        self.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Preferred)
+        self.setMinimumHeight(120)  # Minimum for basic functionality
+        # Remove maximum height to allow filter rules to be visible
+        
         self._init_ui()
 
     def _init_ui(self):
@@ -277,51 +230,11 @@ class FilterPanel(QWidget):
         self.column_selector.setMinimumWidth(160)
         self.column_selector.setMaximumWidth(200)
         self.column_selector.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        self.column_selector.setStyleSheet(
-            """
-            QComboBox {
-                padding: 6px 10px;
-                border: 2px solid #e9ecef;
-                border-radius: 8px;
-                background-color: #ffffff;
-                font-family: 'Segoe UI';
-                font-size: 12px;
-                font-weight: 500;
-                color: #495057;
-                min-height: 18px;
-            }
-            QComboBox:hover {
-                border: 2px solid #4CAF50;
-                background-color: #f8f9fa;
-            }
-            QComboBox:focus {
-                border: 2px solid #4CAF50;
-                background-color: #ffffff;
-            }
-            QComboBox::drop-down {
-                border: none;
-                width: 25px;
-            }
-            QComboBox::down-arrow {
-                image: none;
-                border: none;
-                width: 12px;
-                height: 12px;
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #6c757d, stop:1 #495057);
-            }
-            QComboBox QAbstractItemView {
-                font-family: 'Segoe UI';
-                font-size: 12px;
-                padding: 4px;
-                background-color: #ffffff;
-                border: 2px solid #e9ecef;
-                border-radius: 8px;
-                selection-background-color: #4CAF50;
-                selection-color: white;
-            }
-        """
-        )
+        self.column_selector.setStyleSheet(UnifiedStyles.get_combobox_style(font_size=12, min_height=18, min_width=160))
+        
+        # Add clean arrow and ultra green hover effects
+        # Apply simple green dropdown style
+        apply_green_dropdown_style(self.column_selector)
 
         add_filter_btn = QPushButton("➕ Add Filter")
         add_filter_btn.setMaximumWidth(120)
@@ -502,11 +415,11 @@ class FilterPanel(QWidget):
         )
         main_layout.addWidget(separator)
 
-        # Filter rules container (no scroll area - let main window handle scrolling)
+        # Filter rules container (expandable to show added filters)
         self.rules_layout = QVBoxLayout()
         self.rules_layout.setContentsMargins(0, 5, 0, 8)
-        self.rules_layout.setSpacing(6)
-        main_layout.addLayout(self.rules_layout, 0)
+        self.rules_layout.setSpacing(8)  # Increased spacing for better visibility
+        main_layout.addLayout(self.rules_layout, 1)  # Give it stretch factor 1 to expand
 
         self.setLayout(main_layout)
 
@@ -519,24 +432,45 @@ class FilterPanel(QWidget):
 
     def _add_filter_rule(self):
         """Add a new filter rule with the selected column."""
+        logger.info("🔍 Add Filter button clicked - starting to add filter rule")
+        
         if not self.columns:
+            logger.warning("No columns available for filtering")
             QMessageBox.warning(self, "No Data", "Please load data first")
             return
 
         selected_column = self.column_selector.currentText()
+        logger.info(f"Selected column for filter: '{selected_column}'")
+        
         if not selected_column:
+            logger.warning("No column selected")
             QMessageBox.warning(self, "No Selection", "Please select a column")
             return
 
-        # Create rule with the selected column as fixed parameter
-        rule = FilterRule(self.columns, selected_column)
-        rule.removed.connect(lambda: self._remove_filter_rule(rule))
-        self.filter_rules.append(rule)
-        
-        # Add rule to layout
-        self.rules_layout.addWidget(rule)
+        try:
+            # Create rule with the selected column as fixed parameter
+            rule = FilterRule(self.columns, selected_column)
+            rule.removed.connect(lambda: self._remove_filter_rule(rule))
+            self.filter_rules.append(rule)
+            
+            # Ensure the rule is visible
+            rule.show()
+            rule.setVisible(True)
+            
+            # Add rule to layout
+            self.rules_layout.addWidget(rule)
+            
+            # Force layout update
+            self.rules_layout.update()
+            self.updateGeometry()
 
-        logger.debug(f"Added filter rule for column: {selected_column}")
+            logger.info(f"✅ Successfully added filter rule for column: {selected_column}")
+            logger.info(f"Total filter rules now: {len(self.filter_rules)}")
+            logger.info(f"FilterRule size: {rule.size()}, visible: {rule.isVisible()}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to add filter rule: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to add filter: {str(e)}")
 
     def _remove_filter_rule(self, rule: FilterRule):
         """Remove a filter rule."""

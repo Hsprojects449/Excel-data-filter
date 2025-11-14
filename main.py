@@ -4,7 +4,6 @@ Main entry point for the Excel Data Filter application.
 
 import sys
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt
 from ui.main_window import MainWindow
 from services.logger import logger
 

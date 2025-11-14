@@ -4,10 +4,8 @@ Provides advanced filtering capabilities using Polars.
 Supports column-based filters, regex, numeric ranges, and date ranges.
 """
 
-from typing import Any, List, Optional, Dict
+from typing import Any, List
 import polars as pl
-from datetime import datetime
-import re
 from loguru import logger
 
 
@@ -187,85 +185,6 @@ class FilterEngine:
                 (len(self.dataframe) - len(self.filtered_df))
                 / len(self.dataframe)
                 * 100
-                if len(self.dataframe) > 0
-                else 0
-            ),
-        }
-        result_df = self.dataframe.clone()
-
-        for rule in self.applied_filters:
-            result_df = self._apply_single_filter(result_df, rule)
-
-        self.filtered_df = result_df
-        logger.info(
-            f"Applied {len(self.applied_filters)} filters. Result: {len(result_df)} rows"
-        )
-        return result_df
-
-    def _apply_single_filter(
-        self, df: pl.DataFrame, rule: FilterRule
-    ) -> pl.DataFrame:
-        """Apply a single filter rule to a dataframe."""
-        if rule.column not in df.columns:
-            logger.warning(f"Column '{rule.column}' not found in dataframe")
-            return df
-
-        try:
-            if rule.operator == "equals":
-                return df.filter(pl.col(rule.column) == rule.value)
-
-            elif rule.operator == "contains":
-                return df.filter(pl.col(rule.column).str.contains(str(rule.value)))
-
-            elif rule.operator == "regex":
-                return df.filter(pl.col(rule.column).str.contains(rule.value))
-
-            elif rule.operator == "gt":
-                return df.filter(pl.col(rule.column) > rule.value)
-
-            elif rule.operator == "lt":
-                return df.filter(pl.col(rule.column) < rule.value)
-
-            elif rule.operator == "gte":
-                return df.filter(pl.col(rule.column) >= rule.value)
-
-            elif rule.operator == "lte":
-                return df.filter(pl.col(rule.column) <= rule.value)
-
-            elif rule.operator == "between":
-                if isinstance(rule.value, (list, tuple)) and len(rule.value) == 2:
-                    start, end = rule.value
-                    return df.filter(
-                        (pl.col(rule.column) >= start) & (pl.col(rule.column) <= end)
-                    )
-
-            elif rule.operator == "not_null":
-                return df.filter(pl.col(rule.column).is_not_null())
-
-            elif rule.operator == "is_null":
-                return df.filter(pl.col(rule.column).is_null())
-
-            else:
-                logger.warning(f"Unknown operator: {rule.operator}")
-                return df
-
-        except Exception as e:
-            logger.error(f"Error applying filter: {e}")
-            return df
-
-    def get_filtered_data(self) -> pl.DataFrame:
-        """Get the current filtered dataframe."""
-        return self.filtered_df.clone()
-
-    def get_statistics(self) -> dict:
-        """Get statistics about filtering result."""
-        return {
-            "original_rows": len(self.dataframe),
-            "filtered_rows": len(self.filtered_df),
-            "rows_removed": len(self.dataframe) - len(self.filtered_df),
-            "filter_count": len(self.applied_filters),
-            "reduction_percent": (
-                (len(self.dataframe) - len(self.filtered_df)) / len(self.dataframe) * 100
                 if len(self.dataframe) > 0
                 else 0
             ),

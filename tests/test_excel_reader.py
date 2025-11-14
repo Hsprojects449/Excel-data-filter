@@ -21,7 +21,7 @@ def sample_excel_file():
                 "Age": [25, 30, 35],
             }
         )
-        df.write_excel(tmp.name, sheet_name="Sheet1")
+        df.write_excel(tmp.name, worksheet="Sheet1")
         tmp_path = tmp.name
 
     yield tmp_path

@@ -18,6 +18,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor
 import polars as pl
+from ui.unified_styles import UnifiedStyles
+from ui.simple_dropdown_styler import apply_green_dropdown_style
 
 
 class PreviewTable(QWidget):
@@ -73,30 +75,11 @@ class PreviewTable(QWidget):
         self.rows_spinbox.setMinimum(10)
         self.rows_spinbox.setMaximum(1000)
         self.rows_spinbox.valueChanged.connect(self._on_rows_per_page_changed)
-        self.rows_spinbox.setStyleSheet(
-            """
-            QSpinBox {
-                padding: 6px 10px;
-                border: 2px solid #e9ecef;
-                border-radius: 8px;
-                background-color: #ffffff;
-                font-family: 'Segoe UI';
-                font-size: 12px;
-                font-weight: 500;
-                color: #495057;
-                width: 80px;
-                min-height: 20px;
-            }
-            QSpinBox:hover {
-                border: 2px solid #4CAF50;
-                background-color: #f8f9fa;
-            }
-            QSpinBox:focus {
-                border: 2px solid #4CAF50;
-                background-color: #ffffff;
-            }
-        """
-        )
+        self.rows_spinbox.setStyleSheet(UnifiedStyles.get_spinbox_style(font_size=12, min_height=20, min_width=80))
+        
+        # Add Unicode arrows for better visibility
+        # Remove the arrow fixer that's not needed
+        # self.rows_spinbox already has native arrows
         rows_section.addWidget(self.rows_spinbox)
         
         pagination_layout.addLayout(rows_section)
@@ -150,39 +133,11 @@ class PreviewTable(QWidget):
         self.page_dropdown = QComboBox()
         self.page_dropdown.setMinimumWidth(80)
         self.page_dropdown.currentIndexChanged.connect(self._on_page_selected)
-        self.page_dropdown.setStyleSheet(
-            """
-            QComboBox {
-                padding: 8px 10px;
-                border: 2px solid #e9ecef;
-                border-radius: 8px;
-                background-color: #ffffff;
-                font-family: 'Segoe UI';
-                font-size: 12px;
-                font-weight: 500;
-                color: #495057;
-                min-height: 20px;
-            }
-            QComboBox:hover {
-                border: 2px solid #4CAF50;
-                background-color: #f8f9fa;
-            }
-            QComboBox:focus {
-                border: 2px solid #4CAF50;
-                background-color: #ffffff;
-            }
-            QComboBox QAbstractItemView {
-                font-family: 'Segoe UI';
-                font-size: 12px;
-                padding: 4px;
-                background-color: #ffffff;
-                border: 2px solid #e9ecef;
-                border-radius: 8px;
-                selection-background-color: #4CAF50;
-                selection-color: white;
-            }
-        """
-        )
+        self.page_dropdown.setStyleSheet(UnifiedStyles.get_combobox_style(font_size=12, min_height=20, min_width=80))
+        
+        # Add clean arrow and ultra green hover effects
+        # Apply simple green dropdown style
+        apply_green_dropdown_style(self.page_dropdown)
         page_section.addWidget(self.page_dropdown)
         
         nav_section.addLayout(page_section)
@@ -241,132 +196,137 @@ class PreviewTable(QWidget):
         # Add pagination widget to main layout
         layout.addWidget(pagination_widget)
 
-        # Table
+        # Table with enhanced scrolling
         self.table_widget = QTableWidget()
         self.table_widget.setColumnCount(0)
         self.table_widget.setRowCount(0)
         self.table_widget.setSortingEnabled(False)  # We'll handle sorting manually
         self.table_widget.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
         
-        # Enable scroll bars for both directions
-        self.table_widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        self.table_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        # Configure vertical header (row numbers) to be visible and properly styled
+        self.table_widget.verticalHeader().setVisible(True)
+        self.table_widget.verticalHeader().setDefaultSectionSize(30)
+        self.table_widget.verticalHeader().setMinimumSectionSize(25)
         
-        # Enable smooth finger/touch scrolling with QScroller
-        self.table_widget.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
-        self.table_widget.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        # Configure optimal scrolling behavior
+        self._setup_table_scrolling()
         
-        # Enhanced kinetic scrolling for touch devices
-        self.table_widget.verticalScrollBar().setSingleStep(3)
-        self.table_widget.horizontalScrollBar().setSingleStep(3)
-        self.table_widget.verticalScrollBar().setPageStep(80)
-        self.table_widget.horizontalScrollBar().setPageStep(80)
-        
-        # Enable comprehensive touch support
-        self.table_widget.setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
-        self.table_widget.setAttribute(Qt.WidgetAttribute.WA_TouchPadAcceptSingleTouchEvents, True)
-        self.table_widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        
-        # Try to enable momentum scrolling with QScroller
-        try:
-            from PyQt6.QtWidgets import QScroller
-            scroller = QScroller.scroller(self.table_widget)
-            if scroller:
-                QScroller.grabGesture(self.table_widget, QScroller.ScrollerGestureType.TouchGesture)
-                # Fine-tune scrolling properties
-                properties = scroller.scrollerProperties()
-                properties.setScrollMetric(QScroller.ScrollMetric.VerticalOvershootPolicy, 
-                                         QScroller.OvershootPolicy.OvershootAlwaysOff)
-                properties.setScrollMetric(QScroller.ScrollMetric.HorizontalOvershootPolicy, 
-                                         QScroller.OvershootPolicy.OvershootAlwaysOff)
-                scroller.setScrollerProperties(properties)
-        except (ImportError, AttributeError):
-            pass  # QScroller not available or method not available
-        
-        self.table_widget.setStyleSheet(
-            """
+        # Table styling with unified scrollbars and proper headers
+        table_style = """
             QTableWidget {
-                border: 1px solid #e0e0e0;
+                border: 2px solid #e0e0e0;
+                border-radius: 8px;
                 gridline-color: #f0f0f0;
                 selection-background-color: #e3f2fd;
                 alternate-background-color: #f8f9fa;
+                background-color: #ffffff;
             }
             QTableWidget::item {
-                padding: 8px;
+                padding: 10px 8px;
                 border: none;
                 font-size: 12px;
+                font-family: 'Segoe UI';
             }
             QTableWidget::item:selected {
                 background-color: #e3f2fd;
                 color: #1976d2;
+                font-weight: 500;
+            }
+            QTableWidget::item:hover {
+                background-color: #f5f5f5;
             }
             QHeaderView::section {
-                background-color: #4CAF50;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #4CAF50, stop:1 #45a049);
                 color: white;
-                padding: 10px 8px;
+                padding: 12px 8px;
                 border: none;
                 font-weight: bold;
                 font-size: 12px;
-                border-right: 1px solid #45a049;
+                font-family: 'Segoe UI';
+                border-right: 1px solid #3d8b40;
+                border-bottom: 2px solid #3d8b40;
             }
             QHeaderView::section:hover {
-                background-color: #45a049;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #45a049, stop:1 #3d8b40);
             }
             QHeaderView::section:pressed {
-                background-color: #3d8b40;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #3d8b40, stop:1 #2e7d32);
             }
-            QScrollBar:vertical {
-                background-color: #f5f5f5;
-                width: 16px;
-                border-radius: 8px;
-                border: 1px solid #e0e0e0;
-                margin: 0px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #c0c0c0;
-                border-radius: 7px;
-                min-height: 30px;
-                border: 1px solid #b0b0b0;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #a0a0a0;
-            }
-            QScrollBar::handle:vertical:pressed {
-                background-color: #808080;
-            }
-            QScrollBar:horizontal {
-                background-color: #f5f5f5;
-                height: 16px;
-                border-radius: 8px;
-                border: 1px solid #e0e0e0;
-                margin: 0px;
-            }
-            QScrollBar::handle:horizontal {
-                background-color: #c0c0c0;
-                border-radius: 7px;
-                min-width: 30px;
-                border: 1px solid #b0b0b0;
-            }
-            QScrollBar::handle:horizontal:hover {
-                background-color: #a0a0a0;
-            }
-            QScrollBar::handle:horizontal:pressed {
-                background-color: #808080;
-            }
-            QScrollBar::add-line, QScrollBar::sub-line {
-                border: none;
-                background: transparent;
-                width: 0px;
-                height: 0px;
+            QHeaderView::section:vertical {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #4CAF50, stop:1 #45a049);
+                color: white;
+                padding: 8px 6px;
+                font-size: 11px;
+                font-weight: bold;
+                text-align: center;
+                border-right: 2px solid #3d8b40;
+                border-bottom: 1px solid #3d8b40;
+                min-width: 40px;
             }
         """
-        )
+        self.table_widget.setStyleSheet(table_style + UnifiedStyles.get_scrollbar_style())
         layout.addWidget(self.table_widget, 1)
 
         self.setLayout(layout)
 
+    def _setup_table_scrolling(self):
+        """Configure enhanced table scrolling for both desktop and touch."""
+        # Enable scroll bars for both directions
+        self.table_widget.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        self.table_widget.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        
+        # Enable smooth pixel-based scrolling (crucial for touch)
+        self.table_widget.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.table_widget.setHorizontalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        
+        # Configure scroll steps for optimal finger scrolling
+        self.table_widget.verticalScrollBar().setSingleStep(8)  # Smooth finger movements
+        self.table_widget.horizontalScrollBar().setSingleStep(8)
+        self.table_widget.verticalScrollBar().setPageStep(120)  # Good page scrolling
+        self.table_widget.horizontalScrollBar().setPageStep(120)
+        
+        # Enable focus for keyboard navigation
+        self.table_widget.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        
+        # Apply kinetic scrolling with enhanced configuration
+        try:
+            from PyQt6.QtWidgets import QScroller, QScrollerProperties
+            from loguru import logger
+            
+            # Apply to table widget
+            scroller = QScroller.scroller(self.table_widget)
+            properties = scroller.scrollerProperties()
+            
+            # Fine-tune for table scrolling
+            properties.setScrollMetric(QScrollerProperties.ScrollMetric.DragStartDistance, 0.005)
+            properties.setScrollMetric(QScrollerProperties.ScrollMetric.DragVelocitySmoothingFactor, 0.02)
+            properties.setScrollMetric(QScrollerProperties.ScrollMetric.AxisLockThreshold, 0.7)
+            
+            scroller.setScrollerProperties(properties)
+            QScroller.grabGesture(self.table_widget, QScroller.ScrollerGestureType.TouchGesture)
+            
+            # Also apply to viewport for better coverage
+            viewport_scroller = QScroller.scroller(self.table_widget.viewport())
+            viewport_scroller.setScrollerProperties(properties)
+            QScroller.grabGesture(self.table_widget.viewport(), 
+                                QScroller.ScrollerGestureType.TouchGesture)
+            
+            logger.info("Table kinetic scrolling enabled")
+        except Exception as e:
+            logger.debug(f"QScroller not available for table: {e}")
+            # Fallback: Ensure at least basic smooth scrolling
+            pass
+
     def set_data(self, dataframe: pl.DataFrame):
         """Load data into the preview table."""
+        # Store current scroll position before updating
+        h_scroll = self.table_widget.horizontalScrollBar().value()
+        v_scroll = self.table_widget.verticalScrollBar().value()
+        
         # Filter out columns ending with _v1, _uni (case-insensitive)
         columns_to_show = [
             col for col in dataframe.columns 
@@ -377,6 +337,25 @@ class PreviewTable(QWidget):
         self.sort_column = None  # Reset sorting when new data is loaded
         self.sort_ascending = True
         self._update_table()
+        
+        # Restore scroll position after a brief delay
+        from PyQt6.QtCore import QTimer
+        QTimer.singleShot(50, lambda: self._restore_scroll_position(h_scroll, v_scroll))
+    
+    def _restore_scroll_position(self, h_pos: int, v_pos: int):
+        """Restore horizontal and vertical scroll positions."""
+        try:
+            h_bar = self.table_widget.horizontalScrollBar()
+            v_bar = self.table_widget.verticalScrollBar()
+            
+            # Only restore if the scroll bars still exist and have valid ranges
+            if h_bar.maximum() > 0:
+                h_bar.setValue(min(h_pos, h_bar.maximum()))
+            if v_bar.maximum() > 0:
+                v_bar.setValue(min(v_pos, v_bar.maximum()))
+        except Exception:
+            # Ignore any errors in scroll restoration
+            pass
 
     def _get_display_data(self):
         """Get the data to display (with sorting applied)."""
@@ -435,6 +414,12 @@ class PreviewTable(QWidget):
                 headers.append(col)
         
         self.table_widget.setHorizontalHeaderLabels(headers)
+
+        # Set row numbers for vertical header (global row numbers, not just page numbers)
+        row_labels = []
+        for i in range(len(page_data)):
+            row_labels.append(str(start_row + i + 1))  # 1-based indexing
+        self.table_widget.setVerticalHeaderLabels(row_labels)
 
         # Populate table
         for row_idx, row in enumerate(page_data.iter_rows()):

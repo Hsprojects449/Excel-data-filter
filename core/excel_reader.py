@@ -5,7 +5,7 @@ Handles large files efficiently with lazy loading.
 """
 
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 import polars as pl
 from openpyxl import load_workbook
 from loguru import logger

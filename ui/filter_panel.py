@@ -36,15 +36,17 @@ class FilterRule(QFrame):
         self.setStyleSheet(
             """
             QFrame {
-                border: 1px solid #4CAF50;
-                border-radius: 5px;
-                background-color: #f0f8f0;
-                padding: 6px;
-                margin: 3px 0px;
+                border: 2px solid #e9ecef;
+                border-radius: 10px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ffffff, stop:1 #f8f9fa);
+                padding: 8px;
+                margin: 2px 0px;
             }
             QFrame:hover {
-                background-color: #e8f5e9;
-                border: 1px solid #2e7d32;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #f8f9fa, stop:1 #e9ecef);
+                border: 2px solid #4CAF50;
             }
         """
         )
@@ -53,15 +55,26 @@ class FilterRule(QFrame):
     def _init_ui(self):
         """Initialize the filter rule UI - single row layout."""
         layout = QHBoxLayout()
-        layout.setContentsMargins(6, 4, 6, 4)
-        layout.setSpacing(6)
+        layout.setContentsMargins(10, 8, 10, 8)
+        layout.setSpacing(12)
 
         # Fixed column display (not editable) - adjusts to column name length
         column_label = QLabel(f"<b>{self.selected_column}</b>")
-        column_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        column_label.setStyleSheet("color: #1b5e20; background: transparent; padding: 2px;")
+        column_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        column_label.setStyleSheet(
+            """
+            QLabel {
+                color: #2c3e50; 
+                background: transparent; 
+                padding: 6px 10px;
+                border-radius: 6px;
+                border: 1px solid #e9ecef;
+                background-color: #f8f9fa;
+            }
+        """
+        )
         column_label.setWordWrap(False)
-        layout.addWidget(column_label, 0)  # No max width - adjusts to content
+        layout.addWidget(column_label, 0)
 
         # Detect if column is numeric
         is_numeric = self._is_numeric_column()
@@ -90,29 +103,51 @@ class FilterRule(QFrame):
                 "not equals",
             ]
         self.operator_combo.addItems(operators)
-        self.operator_combo.setMinimumWidth(120)
-        self.operator_combo.setMaximumWidth(150)
+        self.operator_combo.setMinimumWidth(130)
+        self.operator_combo.setMaximumWidth(160)
         self.operator_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.operator_combo.setStyleSheet(
             """
             QComboBox {
-                padding: 6px;
-                border: 1px solid #4CAF50;
-                border-radius: 4px;
-                background-color: white;
+                padding: 6px 8px;
+                border: 2px solid #e9ecef;
+                border-radius: 8px;
+                background-color: #ffffff;
                 font-family: 'Segoe UI';
-                font-size: 11px;
-                font-weight: bold;
-                color: #1b5e20;
+                font-size: 12px;
+                font-weight: 500;
+                color: #495057;
+                min-height: 16px;
             }
             QComboBox:hover {
-                border: 2px solid #2e7d32;
+                border: 2px solid #4CAF50;
+                background-color: #f8f9fa;
+            }
+            QComboBox:focus {
+                border: 2px solid #4CAF50;
+                background-color: #ffffff;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 25px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border: none;
+                width: 12px;
+                height: 12px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #6c757d, stop:1 #495057);
             }
             QComboBox QAbstractItemView {
                 font-family: 'Segoe UI';
-                font-size: 11px;
+                font-size: 12px;
                 padding: 4px;
+                background-color: #ffffff;
+                border: 2px solid #e9ecef;
+                border-radius: 8px;
                 selection-background-color: #4CAF50;
+                selection-color: white;
             }
         """
         )
@@ -120,21 +155,32 @@ class FilterRule(QFrame):
 
         # Value input
         self.value_input = QLineEdit()
-        self.value_input.setPlaceholderText("Value...")
-        self.value_input.setMinimumWidth(150)
+        self.value_input.setPlaceholderText("Enter value...")
+        self.value_input.setMinimumWidth(160)
         self.value_input.setStyleSheet(
             """
             QLineEdit {
-                padding: 7px;
-                border: 1px solid #4CAF50;
-                border-radius: 4px;
-                background-color: white;
+                padding: 8px 10px;
+                border: 2px solid #e9ecef;
+                border-radius: 8px;
+                background-color: #ffffff;
                 font-family: 'Segoe UI';
-                font-size: 11px;
+                font-size: 12px;
+                color: #495057;
+                min-height: 16px;
+            }
+            QLineEdit:hover {
+                border: 2px solid #4CAF50;
+                background-color: #f8f9fa;
             }
             QLineEdit:focus {
-                border: 2px solid #2e7d32;
-                background-color: #fffef0;
+                border: 2px solid #4CAF50;
+                background-color: #ffffff;
+                outline: none;
+            }
+            QLineEdit::placeholder {
+                color: #adb5bd;
+                font-style: italic;
             }
         """
         )
@@ -142,25 +188,28 @@ class FilterRule(QFrame):
 
         # Remove button
         self.remove_btn = QPushButton("✕")
-        self.remove_btn.setMaximumWidth(36)
-        self.remove_btn.setMinimumHeight(30)
+        self.remove_btn.setMaximumWidth(40)
+        self.remove_btn.setMinimumHeight(36)
         self.remove_btn.setStyleSheet(
             """
             QPushButton {
-                background-color: #ff6b6b;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #e74c3c, stop:1 #c0392b);
                 color: white;
                 border: none;
-                border-radius: 4px;
-                padding: 3px;
+                border-radius: 8px;
+                padding: 6px;
                 font-family: 'Segoe UI';
                 font-weight: bold;
                 font-size: 12px;
             }
             QPushButton:hover {
-                background-color: #ff5252;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #c0392b, stop:1 #a93226);
             }
             QPushButton:pressed {
-                background-color: #ff3838;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #a93226, stop:1 #922b21);
             }
         """
         )
@@ -211,67 +260,92 @@ class FilterPanel(QWidget):
     def _init_ui(self):
         """Initialize the filter panel UI."""
         main_layout = QVBoxLayout()
-        main_layout.setContentsMargins(12, 8, 12, 8)
-        main_layout.setSpacing(6)
+        main_layout.setContentsMargins(15, 15, 15, 15)
+        main_layout.setSpacing(12)
 
-        # Top section: Add filter + Logic + Search/Clear buttons
+        # Top section: Add filter + Logic + Search/Clear buttons (no fixed height)
         top_layout = QHBoxLayout()
         top_layout.setContentsMargins(0, 0, 0, 0)
-        top_layout.setSpacing(8)
+        top_layout.setSpacing(15)
 
         add_filter_label = QLabel("🔍 Add Filter:")
-        add_filter_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-        add_filter_label.setStyleSheet("color: #1b5e20;")
+        add_filter_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        add_filter_label.setStyleSheet("color: #2c3e50; padding: 3px 0px;")
         top_layout.addWidget(add_filter_label)
 
         self.column_selector = QComboBox()
-        self.column_selector.setMinimumWidth(140)
-        self.column_selector.setMaximumWidth(180)
+        self.column_selector.setMinimumWidth(160)
+        self.column_selector.setMaximumWidth(200)
         self.column_selector.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.column_selector.setStyleSheet(
             """
             QComboBox {
-                padding: 7px;
-                border: 1px solid #4CAF50;
-                border-radius: 4px;
-                background-color: white;
+                padding: 6px 10px;
+                border: 2px solid #e9ecef;
+                border-radius: 8px;
+                background-color: #ffffff;
                 font-family: 'Segoe UI';
-                font-size: 10px;
-                font-weight: bold;
-                color: #1b5e20;
+                font-size: 12px;
+                font-weight: 500;
+                color: #495057;
+                min-height: 18px;
             }
             QComboBox:hover {
-                border: 2px solid #2e7d32;
+                border: 2px solid #4CAF50;
+                background-color: #f8f9fa;
+            }
+            QComboBox:focus {
+                border: 2px solid #4CAF50;
+                background-color: #ffffff;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 25px;
+            }
+            QComboBox::down-arrow {
+                image: none;
+                border: none;
+                width: 12px;
+                height: 12px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #6c757d, stop:1 #495057);
             }
             QComboBox QAbstractItemView {
                 font-family: 'Segoe UI';
-                font-size: 10px;
+                font-size: 12px;
                 padding: 4px;
+                background-color: #ffffff;
+                border: 2px solid #e9ecef;
+                border-radius: 8px;
                 selection-background-color: #4CAF50;
+                selection-color: white;
             }
         """
         )
 
-        add_filter_btn = QPushButton("➕ Add")
-        add_filter_btn.setMaximumWidth(80)
-        add_filter_btn.setMinimumHeight(32)
+        add_filter_btn = QPushButton("➕ Add Filter")
+        add_filter_btn.setMaximumWidth(120)
+        add_filter_btn.setFixedHeight(32)  # Match header button height
         add_filter_btn.setStyleSheet(
             """
             QPushButton {
-                background-color: #4CAF50;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #27ae60, stop:1 #229954);
                 color: white;
                 border: none;
-                border-radius: 4px;
+                border-radius: 8px;
                 padding: 6px 12px;
                 font-family: 'Segoe UI';
                 font-weight: bold;
-                font-size: 11px;
+                font-size: 12px;
             }
             QPushButton:hover {
-                background-color: #45a049;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #229954, stop:1 #1e8449);
             }
             QPushButton:pressed {
-                background-color: #3d8b40;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #1e8449, stop:1 #196f3d);
             }
         """
         )
@@ -279,12 +353,12 @@ class FilterPanel(QWidget):
 
         top_layout.addWidget(self.column_selector)
         top_layout.addWidget(add_filter_btn)
-        top_layout.addSpacing(12)
+        top_layout.addSpacing(20)
 
         # Logic selector (AND / OR)
         logic_label = QLabel("Logic:")
-        logic_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
-        logic_label.setStyleSheet("color: #1b5e20;")
+        logic_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        logic_label.setStyleSheet("color: #2c3e50; padding: 3px 0px;")
         top_layout.addWidget(logic_label)
 
         self.logic_group = QButtonGroup()
@@ -295,14 +369,24 @@ class FilterPanel(QWidget):
             """
             QRadioButton {
                 font-family: 'Segoe UI';
-                font-size: 10px;
-                font-weight: bold;
-                color: #1b5e20;
-                spacing: 5px;
+                font-size: 12px;
+                font-weight: 600;
+                color: #495057;
+                spacing: 8px;
+                padding: 3px 8px;
             }
             QRadioButton::indicator {
-                width: 14px;
-                height: 14px;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                border: 2px solid #6c757d;
+            }
+            QRadioButton::indicator:checked {
+                background-color: #4CAF50;
+                border: 2px solid #4CAF50;
+            }
+            QRadioButton::indicator:hover {
+                border: 2px solid #4CAF50;
             }
         """
         )
@@ -313,14 +397,24 @@ class FilterPanel(QWidget):
             """
             QRadioButton {
                 font-family: 'Segoe UI';
-                font-size: 10px;
-                font-weight: bold;
-                color: #1b5e20;
-                spacing: 5px;
+                font-size: 12px;
+                font-weight: 600;
+                color: #495057;
+                spacing: 8px;
+                padding: 3px 8px;
             }
             QRadioButton::indicator {
-                width: 14px;
-                height: 14px;
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                border: 2px solid #6c757d;
+            }
+            QRadioButton::indicator:checked {
+                background-color: #4CAF50;
+                border: 2px solid #4CAF50;
+            }
+            QRadioButton::indicator:hover {
+                border: 2px solid #4CAF50;
             }
         """
         )
@@ -328,54 +422,60 @@ class FilterPanel(QWidget):
 
         top_layout.addWidget(self.and_radio)
         top_layout.addWidget(self.or_radio)
-        top_layout.addSpacing(12)
+        top_layout.addSpacing(20)
 
         # Action buttons
-        search_btn = QPushButton("🔎 Search")
-        search_btn.setMaximumWidth(120)
-        search_btn.setMinimumHeight(32)
+        search_btn = QPushButton("🔎 Apply Filters")
+        search_btn.setMaximumWidth(140)
+        search_btn.setFixedHeight(32)  # Match header button height
         search_btn.setStyleSheet(
             """
             QPushButton {
-                background-color: #2196F3;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #3498db, stop:1 #2980b9);
                 color: white;
                 border: none;
-                border-radius: 4px;
+                border-radius: 8px;
                 padding: 6px 12px;
                 font-family: 'Segoe UI';
                 font-weight: bold;
-                font-size: 11px;
+                font-size: 12px;
             }
             QPushButton:hover {
-                background-color: #0b7dda;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #2980b9, stop:1 #21618c);
             }
             QPushButton:pressed {
-                background-color: #0056b3;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #21618c, stop:1 #1b4f72);
             }
         """
         )
         search_btn.clicked.connect(self._apply_filters)
 
-        clear_btn = QPushButton("🗑️ Clear")
-        clear_btn.setMaximumWidth(95)
-        clear_btn.setMinimumHeight(32)
+        clear_btn = QPushButton("🗑️ Clear All")
+        clear_btn.setMaximumWidth(120)
+        clear_btn.setFixedHeight(32)  # Match header button height
         clear_btn.setStyleSheet(
             """
             QPushButton {
-                background-color: #ff9800;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #e74c3c, stop:1 #c0392b);
                 color: white;
                 border: none;
-                border-radius: 4px;
+                border-radius: 8px;
                 padding: 6px 12px;
                 font-family: 'Segoe UI';
                 font-weight: bold;
-                font-size: 11px;
+                font-size: 12px;
             }
             QPushButton:hover {
-                background-color: #e68900;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #c0392b, stop:1 #a93226);
             }
             QPushButton:pressed {
-                background-color: #cc7700;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #a93226, stop:1 #922b21);
             }
         """
         )
@@ -385,19 +485,27 @@ class FilterPanel(QWidget):
         top_layout.addWidget(clear_btn)
         top_layout.addStretch()
 
+        # Add top layout directly to main layout
         main_layout.addLayout(top_layout)
 
         # Separator
         separator = QFrame()
         separator.setFrameShape(QFrame.Shape.HLine)
-        separator.setStyleSheet("color: #e0e0e0;")
+        separator.setStyleSheet(
+            """
+            QFrame {
+                color: #e9ecef;
+                border: 1px solid #e9ecef;
+                margin: 8px 0px;
+            }
+        """
+        )
         main_layout.addWidget(separator)
 
-        # Filter rules layout (will hold added filters dynamically and expand the panel)
-        # No container widget - directly add to main layout to save space
+        # Filter rules container (no scroll area - let main window handle scrolling)
         self.rules_layout = QVBoxLayout()
-        self.rules_layout.setContentsMargins(0, 0, 0, 0)
-        self.rules_layout.setSpacing(4)
+        self.rules_layout.setContentsMargins(0, 5, 0, 8)
+        self.rules_layout.setSpacing(6)
         main_layout.addLayout(self.rules_layout, 0)
 
         self.setLayout(main_layout)
@@ -424,6 +532,8 @@ class FilterPanel(QWidget):
         rule = FilterRule(self.columns, selected_column)
         rule.removed.connect(lambda: self._remove_filter_rule(rule))
         self.filter_rules.append(rule)
+        
+        # Add rule to layout
         self.rules_layout.addWidget(rule)
 
         logger.debug(f"Added filter rule for column: {selected_column}")

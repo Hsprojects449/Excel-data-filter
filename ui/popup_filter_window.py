@@ -21,42 +21,43 @@ from PyQt6.QtWidgets import (
     QScrollArea,
 )
 from PyQt6.QtCore import pyqtSignal, Qt
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QCursor
 from typing import List, Dict, Any
 from loguru import logger
 from ui.unified_styles import UnifiedStyles
-from ui.simple_dropdown_styler import apply_green_dropdown_style
+
 
 
 class PopupFilterRule(QFrame):
-    """Individual filter rule widget for popup window."""
-
+    """Individual filter rule widget for popup window.
+    Dynamically adjusts available operators based on whether the selected column is numeric.
+    """
     removed = pyqtSignal()
 
-    def __init__(self, columns: List[str], rule_id: int = 0):
+    def __init__(self, columns: List[str], rule_id: int = 0, numeric_columns: List[str] = None):
         super().__init__()
         self.rule_id = rule_id
-        self.columns = [col for col in columns if not col.lower().endswith(("_v1", "_uni"))]
+        # Columns are already filtered for UI in panel; do not alter here
+        self.columns = columns
+        self.numeric_columns = set(numeric_columns or [])
         
         # Ensure proper size for visibility
-        self.setMinimumHeight(60)
+        self.setMinimumHeight(46)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         
         self.setStyleSheet(
             """
             QFrame {
-                border: 2px solid #e9ecef;
-                border-radius: 12px;
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #ffffff, stop:1 #f8f9fa);
-                padding: 12px;
-                margin: 4px 0px;
-                min-height: 60px;
+                border: 1px solid #d9d9d9;
+                border-radius: 8px;
+                background: #ffffff;
+                padding: 6px;
+                margin: 2px 0px;
+                min-height: 46px;
             }
             QFrame:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #f8f9fa, stop:1 #e9ecef);
-                border: 2px solid #4CAF50;
+                background: #f5f9f5;
+                border: 1px solid #4CAF50;
             }
         """
         )
@@ -65,74 +66,97 @@ class PopupFilterRule(QFrame):
     def _init_ui(self):
         """Initialize the popup filter rule UI."""
         layout = QHBoxLayout()
-        layout.setContentsMargins(6, 4, 6, 4)
-        layout.setSpacing(8)
+        layout.setContentsMargins(4, 2, 4, 2)
+        layout.setSpacing(6)
 
         # Column selector
-        column_label = QLabel("Column:")
-        column_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        column_label.setStyleSheet("color: #2c3e50; padding: 2px;")
+        column_label = QLabel("Column")
+        column_label.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
+        column_label.setStyleSheet("""
+            QLabel {
+                color: #2c3e50;
+                padding: 0 4px;
+                background: #ffffff;
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+        """)
         layout.addWidget(column_label)
 
         self.column_combo = QComboBox()
         self.column_combo.addItems(self.columns)
-        self.column_combo.setMinimumWidth(120)
+        self.column_combo.setMinimumWidth(100)
         self.column_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.column_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        # Apply simple green dropdown style directly
-        apply_green_dropdown_style(self.column_combo)
+        self.column_combo.setStyleSheet(UnifiedStyles.get_combobox_style(font_size=11, min_height=18, min_width=120))
+        UnifiedStyles.apply_combobox_popup_style(self.column_combo)
         layout.addWidget(self.column_combo, 2)  # Give more space
 
         # Operator selector
-        operator_label = QLabel("Operator:")
-        operator_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        operator_label.setStyleSheet("color: #2c3e50; padding: 2px;")
+        operator_label = QLabel("Option")
+        operator_label.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
+        operator_label.setStyleSheet("""
+            QLabel {
+                color: #2c3e50;
+                padding: 0 4px;
+                background: #ffffff;
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+        """)
         layout.addWidget(operator_label)
 
         self.operator_combo = QComboBox()
-        operators = [
+        # Base operator sets (without deprecated 'is')
+        self._non_numeric_ops = [
             "contains",
-            "is",
             "not contains",
             "starts with",
             "ends with",
             "equals",
             "not equals",
-            ">",
-            "<",
-            ">=",
-            "<=",
-            "between",
         ]
-        self.operator_combo.addItems(operators)
-        self.operator_combo.setMinimumWidth(100)
+        self._numeric_ops = [">", "<", ">=", "<=", "between"]
+        self._rebuild_operator_items(initial=True)
+        self.operator_combo.setMinimumWidth(90)
         self.operator_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.operator_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
-        # Apply simple green dropdown style directly
-        apply_green_dropdown_style(self.operator_combo)
+        self.operator_combo.setStyleSheet(UnifiedStyles.get_combobox_style(font_size=11, min_height=18, min_width=100))
+        UnifiedStyles.apply_combobox_popup_style(self.operator_combo)
         layout.addWidget(self.operator_combo, 2)  # Give more space
 
         # Value input
-        value_label = QLabel("Value:")
-        value_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
-        value_label.setStyleSheet("color: #2c3e50; padding: 2px;")
+        value_label = QLabel("Value")
+        value_label.setFont(QFont("Segoe UI", 9, QFont.Weight.DemiBold))
+        value_label.setStyleSheet("""
+            QLabel {
+                color: #2c3e50;
+                padding: 0 4px;
+                background: #ffffff;
+                border: 1px solid #d0d0d0;
+                border-radius: 4px;
+                min-height: 20px;
+            }
+        """)
         layout.addWidget(value_label)
 
         self.value_input = QLineEdit()
         self.value_input.setPlaceholderText("Enter filter value...")
-        self.value_input.setMinimumWidth(140)
+        self.value_input.setMinimumWidth(120)
         self.value_input.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.value_input.setStyleSheet("""
             QLineEdit {
                 background: white;
-                border: 1px solid #ddd;
+                border: 1px solid #ccc;
                 border-radius: 4px;
-                padding: 4px 8px;
-                font-size: 10px;
-                min-height: 16px;
+                padding: 2px 6px;
+                font-size: 15px;
+                min-height: 25px;
             }
             QLineEdit:focus {
-                border: 2px solid #4CAF50;
+                border: 1px solid #4CAF50;
             }
             QLineEdit::placeholder {
                 color: #adb5bd;
@@ -143,37 +167,53 @@ class PopupFilterRule(QFrame):
 
         # Remove button
         self.remove_btn = QPushButton("🗑️")
-        self.remove_btn.setMaximumWidth(40)
-        self.remove_btn.setMinimumHeight(28)
-        self.remove_btn.setMaximumHeight(28)
+        self.remove_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.remove_btn.setMaximumWidth(34)
+        self.remove_btn.setMinimumHeight(22)
+        self.remove_btn.setMaximumHeight(22)
         self.remove_btn.setToolTip("Remove this filter rule")
         self.remove_btn.setStyleSheet(
             """
             QPushButton {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #e74c3c, stop:1 #c0392b);
+                background: #e74c3c;
                 color: white;
                 border: none;
-                border-radius: 8px;
-                padding: 6px 12px;
+                border-radius: 6px;
+                padding: 2px 6px;
                 font-family: 'Segoe UI';
                 font-weight: bold;
                 font-size: 10px;
             }
-            QPushButton:hover {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #c0392b, stop:1 #a93226);
+            QPushButton:hover { 
+                background: #c0392b;
             }
-            QPushButton:pressed {
-                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #a93226, stop:1 #922b21);
-            }
+            QPushButton:pressed { background: #a93226; }
         """
         )
         self.remove_btn.clicked.connect(self.removed.emit)
         layout.addWidget(self.remove_btn)
 
         self.setLayout(layout)
+
+        # React to column change for dynamic operator filtering
+        self.column_combo.currentTextChanged.connect(self._on_column_changed)
+
+    def _on_column_changed(self, _value: str):
+        self._rebuild_operator_items()
+
+    def _rebuild_operator_items(self, initial: bool = False):
+        current_col = self.column_combo.currentText()
+        is_numeric = current_col in self.numeric_columns
+        current_selection = self.operator_combo.currentText()
+        self.operator_combo.clear()
+        if is_numeric:
+            ops = self._non_numeric_ops + self._numeric_ops
+        else:
+            ops = list(self._non_numeric_ops)  # copy
+        self.operator_combo.addItems(ops)
+        # Restore previous selection if still valid; else first
+        if not initial and current_selection in ops:
+            self.operator_combo.setCurrentText(current_selection)
 
     def get_filter_data(self) -> Dict[str, Any]:
         """Get the filter rule data."""
@@ -189,9 +229,10 @@ class PopupFilterWindow(QDialog):
 
     filters_applied = pyqtSignal(list, str)  # filters, logic (AND/OR)
 
-    def __init__(self, parent=None, columns: List[str] = None, current_filters: List[Dict] = None, current_logic: str = "AND"):
+    def __init__(self, parent=None, columns: List[str] = None, numeric_columns: List[str] = None, current_filters: List[Dict] = None, current_logic: str = "AND"):
         super().__init__(parent)
         self.columns = columns or []
+        self.numeric_columns = numeric_columns or []
         self.filter_rules: List[PopupFilterRule] = []
         
         # Store existing filters for editing
@@ -249,6 +290,7 @@ class PopupFilterWindow(QDialog):
         add_section.addWidget(add_label)
 
         add_filter_btn = QPushButton("➕ Add Filter Rule")
+        add_filter_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         add_filter_btn.setMinimumHeight(36)
         add_filter_btn.setStyleSheet(
             """
@@ -372,6 +414,7 @@ class PopupFilterWindow(QDialog):
         button_section.setSpacing(10)
 
         apply_btn = QPushButton("🔍 Apply Filters")
+        apply_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         apply_btn.setMinimumHeight(40)
         apply_btn.setStyleSheet(
             """
@@ -395,6 +438,7 @@ class PopupFilterWindow(QDialog):
         button_section.addWidget(apply_btn)
 
         clear_btn = QPushButton("🗑️ Clear All")
+        clear_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         clear_btn.setMinimumHeight(40)
         clear_btn.setStyleSheet(
             """
@@ -418,6 +462,7 @@ class PopupFilterWindow(QDialog):
         button_section.addWidget(clear_btn)
 
         close_btn = QPushButton("❌ Close")
+        close_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         close_btn.setMinimumHeight(40)
         close_btn.setStyleSheet(
             """
@@ -459,7 +504,7 @@ class PopupFilterWindow(QDialog):
             return
 
         try:
-            rule = PopupFilterRule(self.columns, len(self.filter_rules))
+            rule = PopupFilterRule(self.columns, len(self.filter_rules), numeric_columns=self.numeric_columns)
             rule.removed.connect(lambda: self._remove_filter_rule(rule))
             self.filter_rules.append(rule)
             
@@ -542,6 +587,7 @@ class PopupFilterWindow(QDialog):
                         rule.column_combo.setCurrentText(column)
                     
                     # Set operator
+                    # After column set, operators list might differ; ensure it exists then set
                     if operator and rule.operator_combo.findText(operator) != -1:
                         rule.operator_combo.setCurrentText(operator)
                     

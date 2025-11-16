@@ -1,6 +1,7 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 import os
+import glob
 from PyInstaller.utils.hooks import collect_all
 
 # Collect all data from packages that might have hidden imports
@@ -37,6 +38,14 @@ openpyxl_datas, openpyxl_binaries, openpyxl_hiddenimports = collect_all('openpyx
 datas.extend(openpyxl_datas)
 binaries.extend(openpyxl_binaries)
 hiddenimports.extend(openpyxl_hiddenimports)
+
+# Include local UI assets (icons/images) so they are available at runtime
+assets_root = os.path.join('ui', 'assets')
+if os.path.isdir(assets_root):
+    for f in glob.glob(os.path.join(assets_root, '**', '*'), recursive=True):
+        if os.path.isfile(f):
+            rel_dir = os.path.dirname(os.path.relpath(f, start='.'))
+            datas.append((f, rel_dir))
 
 # Additional hidden imports for Excel processing
 hiddenimports.extend([

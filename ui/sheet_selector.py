@@ -14,7 +14,7 @@ from PyQt6.QtWidgets import (
     QMessageBox
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QIcon, QPixmap
+from PyQt6.QtGui import QFont, QIcon, QPixmap, QCursor
 from typing import Optional, List
 
 
@@ -85,6 +85,11 @@ class SheetSelectionDialog(QDialog):
                 font-family: 'Segoe UI';
                 font-size: 12px;
                 padding: 5px;
+                outline: none;
+            }
+            QListWidget:focus {
+                border: 2px solid #4CAF50;
+                outline: none;
             }
             QListWidget::item {
                 padding: 12px 15px;
@@ -92,17 +97,24 @@ class SheetSelectionDialog(QDialog):
                 border-radius: 6px;
                 margin: 2px;
                 background-color: transparent;
+                outline: none;
             }
             QListWidget::item:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                    stop:0 #e3f2fd, stop:1 #bbdefb);
-                color: #1976d2;
+                    stop:0 #c8e6c9, stop:1 #a5d6a7);
+                color: #2e7d32;
             }
             QListWidget::item:selected {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #4CAF50, stop:1 #45a049);
                 color: white;
                 font-weight: bold;
+                outline: none;
+                border: none;
+            }
+            QListWidget::item:focus {
+                outline: none;
+                border: none;
             }
         """
         )
@@ -137,6 +149,7 @@ class SheetSelectionDialog(QDialog):
 
         # Cancel button
         cancel_btn = QPushButton("❌ Cancel")
+        cancel_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         cancel_btn.setStyleSheet(
             """
             QPushButton {
@@ -154,6 +167,7 @@ class SheetSelectionDialog(QDialog):
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #5a6268, stop:1 #495057);
+                cursor: pointer;
             }
         """
         )
@@ -162,6 +176,7 @@ class SheetSelectionDialog(QDialog):
 
         # Load Selected button
         load_btn = QPushButton("✅ Load Selected Sheet")
+        load_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         load_btn.setStyleSheet(
             """
             QPushButton {
@@ -179,6 +194,7 @@ class SheetSelectionDialog(QDialog):
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #45a049, stop:1 #3d8b40);
+                cursor: pointer;
             }
             QPushButton:pressed {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,

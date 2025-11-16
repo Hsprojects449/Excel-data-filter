@@ -6,6 +6,8 @@ import sys
 from PyQt6.QtWidgets import QApplication
 from ui.main_window import MainWindow
 from services.logger import logger
+from PyQt6.QtGui import QIcon
+import os
 
 __version__ = "1.0.0"
 
@@ -15,6 +17,11 @@ def main():
     logger.info(f"Excel Data Filter v{__version__} starting...")
 
     app = QApplication(sys.argv)
+    # Resolve icons from the packaged ui/assets directory
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    ui_base = os.path.join(base_path, "ui")
+    icon_path = os.path.join(ui_base, "assets", "vsn_logo.jpg")
+    win_icon_path = os.path.join(ui_base, "assets", "favicon.ico")
     
     # Set light theme as default instead of system theme
     app.setStyle('Fusion')  # Use Fusion style for consistent appearance
@@ -123,8 +130,11 @@ def main():
     """
     
     app.setStyleSheet(professional_palette)
+
+    app.setWindowIcon(QIcon(icon_path))
     
     window = MainWindow()
+    #window.setWindowIcon(QIcon(win_icon_path))
     window.show()
 
     logger.info("Application window shown")

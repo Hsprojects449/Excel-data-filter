@@ -16,10 +16,10 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
 )
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QFont, QColor
+from PyQt6.QtGui import QFont, QColor, QCursor
 import polars as pl
 from ui.unified_styles import UnifiedStyles
-from ui.simple_dropdown_styler import apply_green_dropdown_style
+
 
 
 class PreviewTable(QWidget):
@@ -38,8 +38,9 @@ class PreviewTable(QWidget):
     def _init_ui(self):
         """Initialize the table UI."""
         layout = QVBoxLayout()
-        layout.setContentsMargins(15, 15, 15, 15)
-        layout.setSpacing(10)
+        # Reduce top margin to pull the pagination block closer to the filter panel
+        layout.setContentsMargins(15, 8, 15, 12)
+        layout.setSpacing(8)
 
         # Pagination controls (flexible height)
         pagination_widget = QWidget()
@@ -50,15 +51,15 @@ class PreviewTable(QWidget):
                     stop:0 #f8f9fa, stop:1 #e9ecef);
                 border: 1px solid #dee2e6;
                 border-radius: 8px;
-                padding: 8px;
+                padding: 6px;
             }
         """
         )
 
         # Pagination controls
         pagination_layout = QHBoxLayout()
-        pagination_layout.setSpacing(20)
-        pagination_layout.setContentsMargins(15, 10, 15, 10)
+        pagination_layout.setSpacing(16)
+        pagination_layout.setContentsMargins(12, 8, 12, 8)
         pagination_widget.setLayout(pagination_layout)
 
         # Rows per page section
@@ -66,7 +67,7 @@ class PreviewTable(QWidget):
         rows_section.setSpacing(8)
         
         rows_label = QLabel("📄 Rows per page:")
-        rows_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        rows_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         rows_label.setStyleSheet("color: #2c3e50; padding: 3px 0px;")
         rows_section.addWidget(rows_label)
         
@@ -74,8 +75,10 @@ class PreviewTable(QWidget):
         self.rows_spinbox.setValue(self.rows_per_page)
         self.rows_spinbox.setMinimum(10)
         self.rows_spinbox.setMaximum(1000)
+        self.rows_spinbox.setFixedHeight(26)
+        self.rows_spinbox.setMinimumWidth(75)
         self.rows_spinbox.valueChanged.connect(self._on_rows_per_page_changed)
-        self.rows_spinbox.setStyleSheet(UnifiedStyles.get_spinbox_style(font_size=12, min_height=20, min_width=80))
+        self.rows_spinbox.setStyleSheet(UnifiedStyles.get_spinbox_style(font_size=11, min_height=18, min_width=75))
         
         # Add Unicode arrows for better visibility
         # Remove the arrow fixer that's not needed
@@ -87,11 +90,12 @@ class PreviewTable(QWidget):
 
         # Navigation section
         nav_section = QHBoxLayout()
-        nav_section.setSpacing(12)
+        nav_section.setSpacing(10)
         
         self.prev_btn = QPushButton("← Previous")
+        self.prev_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.prev_btn.clicked.connect(self._previous_page)
-        self.prev_btn.setFixedHeight(32)  # Match header button height
+        self.prev_btn.setFixedHeight(30)  # Compact pagination height
         self.prev_btn.setStyleSheet(
             """
             QPushButton {
@@ -100,14 +104,15 @@ class PreviewTable(QWidget):
                 color: white;
                 border: none;
                 border-radius: 8px;
-                padding: 6px 15px;
+                padding: 4px 12px;
                 font-weight: bold;
                 font-family: 'Segoe UI';
-                font-size: 12px;
+                font-size: 11px;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #515a5a, stop:1 #424949);
+                cursor: pointer;
             }
             QPushButton:pressed {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -126,30 +131,28 @@ class PreviewTable(QWidget):
         page_section.setSpacing(8)
         
         page_select_label = QLabel("Page:")
-        page_select_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        page_select_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         page_select_label.setStyleSheet("color: #2c3e50; padding: 3px 0px;")
         page_section.addWidget(page_select_label)
         
         self.page_dropdown = QComboBox()
-        self.page_dropdown.setMinimumWidth(80)
+        self.page_dropdown.setFixedHeight(26)
+        self.page_dropdown.setMinimumWidth(70)
         self.page_dropdown.currentIndexChanged.connect(self._on_page_selected)
-        self.page_dropdown.setStyleSheet(UnifiedStyles.get_combobox_style(font_size=12, min_height=20, min_width=80))
-        
-        # Add clean arrow and ultra green hover effects
-        # Apply simple green dropdown style
-        apply_green_dropdown_style(self.page_dropdown)
+        self.page_dropdown.setStyleSheet(UnifiedStyles.get_combobox_style(font_size=11, min_height=18, min_width=70))
+        UnifiedStyles.apply_combobox_popup_style(self.page_dropdown)
         page_section.addWidget(self.page_dropdown)
         
         nav_section.addLayout(page_section)
 
         self.page_label = QLabel("Page 0")
-        self.page_label.setFont(QFont("Segoe UI", 12, QFont.Weight.Bold))
+        self.page_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
         self.page_label.setStyleSheet(
             """
             QLabel {
                 color: #495057; 
-                min-width: 250px; 
-                padding: 6px 12px;
+                min-width: 230px; 
+                padding: 4px 10px;
                 background-color: #f8f9fa;
                 border: 1px solid #e9ecef;
                 border-radius: 8px;
@@ -159,8 +162,9 @@ class PreviewTable(QWidget):
         nav_section.addWidget(self.page_label)
 
         self.next_btn = QPushButton("Next →")
+        self.next_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.next_btn.clicked.connect(self._next_page)
-        self.next_btn.setFixedHeight(32)  # Match header button height
+        self.next_btn.setFixedHeight(30)  # Compact pagination height
         self.next_btn.setStyleSheet(
             """
             QPushButton {
@@ -169,14 +173,15 @@ class PreviewTable(QWidget):
                 color: white;
                 border: none;
                 border-radius: 8px;
-                padding: 6px 15px;
+                padding: 4px 12px;
                 font-weight: bold;
                 font-family: 'Segoe UI';
-                font-size: 12px;
+                font-size: 11px;
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #515a5a, stop:1 #424949);
+                cursor: pointer;
             }
             QPushButton:pressed {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -217,20 +222,32 @@ class PreviewTable(QWidget):
                 border: 2px solid #e0e0e0;
                 border-radius: 8px;
                 gridline-color: #f0f0f0;
-                selection-background-color: #e3f2fd;
+                selection-background-color: #c8e6c9;
                 alternate-background-color: #f8f9fa;
                 background-color: #ffffff;
+                outline: none;
+            }
+            QTableWidget:focus {
+                border: 2px solid #e0e0e0;
+                outline: none;
             }
             QTableWidget::item {
                 padding: 10px 8px;
                 border: none;
                 font-size: 12px;
-                font-family: 'Segoe UI';
+                font-family: 'Nirmala UI', 'Segoe UI', sans-serif;
+                outline: none;
             }
             QTableWidget::item:selected {
-                background-color: #e3f2fd;
-                color: #1976d2;
+                background-color: #c8e6c9;
+                color: #2e7d32;
                 font-weight: 500;
+                border: none;
+                outline: none;
+            }
+            QTableWidget::item:focus {
+                border: none;
+                outline: none;
             }
             QTableWidget::item:hover {
                 background-color: #f5f5f5;
@@ -243,7 +260,7 @@ class PreviewTable(QWidget):
                 border: none;
                 font-weight: bold;
                 font-size: 12px;
-                font-family: 'Segoe UI';
+                font-family: 'Nirmala UI', 'Segoe UI', sans-serif;
                 border-right: 1px solid #3d8b40;
                 border-bottom: 2px solid #3d8b40;
             }
@@ -323,16 +340,21 @@ class PreviewTable(QWidget):
 
     def set_data(self, dataframe: pl.DataFrame):
         """Load data into the preview table."""
+        # Check if dataframe is None or empty
+        if dataframe is None:
+            self.table_widget.setColumnCount(0)
+            self.table_widget.setRowCount(0)
+            self.page_label.setText("No data")
+            self.page_dropdown.clear()
+            self.dataframe = None
+            return
+            
         # Store current scroll position before updating
         h_scroll = self.table_widget.horizontalScrollBar().value()
         v_scroll = self.table_widget.verticalScrollBar().value()
         
-        # Filter out columns ending with _v1, _uni (case-insensitive)
-        columns_to_show = [
-            col for col in dataframe.columns 
-            if not col.lower().endswith(("_v1", "_uni"))
-        ]
-        self.dataframe = dataframe.select(columns_to_show) if columns_to_show else dataframe
+        # Show all columns exactly as in the Excel source (no exclusions here)
+        self.dataframe = dataframe
         self.current_page = 0
         self.sort_column = None  # Reset sorting when new data is loaded
         self.sort_ascending = True

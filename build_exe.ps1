@@ -5,6 +5,10 @@ Write-Host ""
 # Activate virtual environment
 & ".\.venv\Scripts\Activate.ps1"
 
+# Ensure PyInstaller is available in this venv (and not pointing to a stale shebang)
+Write-Host "Ensuring PyInstaller is installed in the current venv..." -ForegroundColor Yellow
+python -m pip install --upgrade --force-reinstall pyinstaller 1>$null
+
 # Clean previous builds
 Write-Host "Cleaning previous builds..." -ForegroundColor Yellow
 if (Test-Path "build") { Remove-Item -Recurse -Force "build" }
@@ -16,7 +20,8 @@ Write-Host ""
 
 # Build the executable
 Write-Host "Starting PyInstaller build..." -ForegroundColor Yellow
-& pyinstaller excel_data_filter.spec
+# Use module invocation to avoid broken pyinstaller.exe shims
+python -m PyInstaller .\excel_data_filter.spec
 
 Write-Host ""
 if (Test-Path "dist\Excel_Data_Filter_Pro.exe") {

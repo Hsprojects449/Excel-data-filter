@@ -16,12 +16,12 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QSizePolicy,
 )
-from PyQt6.QtCore import pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtCore import pyqtSignal, Qt
+from PyQt6.QtGui import QFont, QCursor
 from typing import List, Dict, Any
 from loguru import logger
 from ui.unified_styles import UnifiedStyles
-from ui.simple_dropdown_styler import apply_green_dropdown_style
+
 
 
 class FilterRule(QFrame):
@@ -114,10 +114,7 @@ class FilterRule(QFrame):
         self.operator_combo.setMaximumWidth(160)
         self.operator_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.operator_combo.setStyleSheet(UnifiedStyles.get_combobox_style(font_size=12, min_height=16, min_width=130))
-        
-        # Add clean arrow and ultra green hover effects
-        # Apply simple green dropdown style
-        apply_green_dropdown_style(self.operator_combo)
+        UnifiedStyles.apply_combobox_popup_style(self.operator_combo)
         layout.addWidget(self.operator_combo, 0)
 
         # Value input with unified styling
@@ -135,6 +132,7 @@ class FilterRule(QFrame):
 
         # Remove button
         self.remove_btn = QPushButton("✕")
+        self.remove_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self.remove_btn.setMaximumWidth(40)
         self.remove_btn.setMinimumHeight(36)
         self.remove_btn.setStyleSheet(
@@ -231,12 +229,10 @@ class FilterPanel(QWidget):
         self.column_selector.setMaximumWidth(200)
         self.column_selector.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.column_selector.setStyleSheet(UnifiedStyles.get_combobox_style(font_size=12, min_height=18, min_width=160))
-        
-        # Add clean arrow and ultra green hover effects
-        # Apply simple green dropdown style
-        apply_green_dropdown_style(self.column_selector)
+        UnifiedStyles.apply_combobox_popup_style(self.column_selector)
 
         add_filter_btn = QPushButton("➕ Add Filter")
+        add_filter_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         add_filter_btn.setMaximumWidth(120)
         add_filter_btn.setFixedHeight(32)  # Match header button height
         add_filter_btn.setStyleSheet(
@@ -339,6 +335,7 @@ class FilterPanel(QWidget):
 
         # Action buttons
         search_btn = QPushButton("🔎 Apply Filters")
+        search_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         search_btn.setMaximumWidth(140)
         search_btn.setFixedHeight(32)  # Match header button height
         search_btn.setStyleSheet(
@@ -367,6 +364,7 @@ class FilterPanel(QWidget):
         search_btn.clicked.connect(self._apply_filters)
 
         clear_btn = QPushButton("🗑️ Clear All")
+        clear_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         clear_btn.setMaximumWidth(120)
         clear_btn.setFixedHeight(32)  # Match header button height
         clear_btn.setStyleSheet(

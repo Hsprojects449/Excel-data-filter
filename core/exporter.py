@@ -259,9 +259,14 @@ class ExcelExporter:
             if progress_callback:
                 progress_callback(30, f"Exporting {total_rows:,} rows to CSV...")
 
-            # Use Polars' efficient CSV writer with error handling
+            # Use Polars' efficient CSV writer with UTF-8 encoding for international characters
             try:
-                self.dataframe.write_csv(output_path)
+                # Write CSV (Polars uses UTF-8 by default)
+                # To ensure proper Telugu character support in Excel, write BOM manually
+                csv_bytes = self.dataframe.write_csv().encode('utf-8')
+                with open(output_path, 'wb') as f:
+                    f.write(b'\xef\xbb\xbf')  # UTF-8 BOM
+                    f.write(csv_bytes)
             except PermissionError as e:
                 logger.error(f"Permission denied writing CSV file {output_path}: {e}")
                 if progress_callback:

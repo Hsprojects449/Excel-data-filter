@@ -35,19 +35,16 @@ class SimpleDropdownStyler:
                     border: 2px solid #4CAF50;
                 }
                 QComboBox::drop-down {
-                    subcontrol-origin: padding;
-                    subcontrol-position: top right;
+                    border: none;
                     width: 20px;
-                    border-left: 1px solid rgba(255, 255, 255, 0.8);
-                    border-top-right-radius: 3px;
-                    border-bottom-right-radius: 3px;
+                    background: transparent;
                 }
                 QComboBox::down-arrow {
                     width: 0;
                     height: 0;
-                    border-left: 4px solid transparent;
-                    border-right: 4px solid transparent;
-                    border-top: 6px solid #333333;
+                    border-left: 5px solid transparent;
+                    border-right: 5px solid transparent;
+                    border-top: 7px solid #333333;
                 }
                 QComboBox::down-arrow:hover {
                     border-top-color: white;
@@ -100,28 +97,16 @@ class SimpleDropdownStyler:
                     border: 2px solid #4CAF50;
                 }
                 QComboBox::drop-down {
-                    subcontrol-origin: padding;
-                    subcontrol-position: top right;
+                    border: none;
                     width: 20px;
-                    border-left: 1px solid #ddd;
-                    border-top-right-radius: 3px;
-                    border-bottom-right-radius: 3px;
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #ffffff, stop:1 #f8f9fa);
-                }
-                QComboBox::drop-down:hover {
-                    background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
-                        stop:0 #4CAF50, stop:1 #45a049);
+                    background: transparent;
                 }
                 QComboBox::down-arrow {
                     width: 0;
                     height: 0;
-                    border-left: 4px solid transparent;
-                    border-right: 4px solid transparent;
-                    border-top: 6px solid #333333;
-                }
-                QComboBox::down-arrow:hover {
-                    border-top-color: #4CAF50;
+                    border-left: 5px solid transparent;
+                    border-right: 5px solid transparent;
+                    border-top: 7px solid #333333;
                 }
                 QComboBox QAbstractItemView {
                     background-color: white;

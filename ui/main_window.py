@@ -19,9 +19,10 @@ from PyQt6.QtWidgets import (
     QComboBox,
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QIcon, QCursor
 from pathlib import Path
 import polars as pl
+import os
 
 from loguru import logger
 from services.config_manager import config_manager
@@ -30,7 +31,7 @@ from core.filter_engine import FilterEngine, FilterRule as EngineFilterRule
 from core.exporter import ExcelExporter
 from ui.preview_table import PreviewTable
 from ui.unified_styles import UnifiedStyles
-from ui.simple_dropdown_styler import apply_header_dropdown_style
+
 from ui.filter_panel import FilterPanel
 from ui.simple_filter_panel import SimpleFilterPanel
 from ui.sheet_selector import SheetSelectionDialog
@@ -133,11 +134,17 @@ class MainWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Excel Data Filter Pro")
+        self.setWindowTitle("XLS Filter Pro")
         # Set minimum size but show maximized by default
         self.setMinimumSize(1200, 700)
         # Show maximized on startup
         self.showMaximized()
+        #self.setWindowIcon(QIcon("assets/vsn_logo.jpg"))
+
+        base_path = os.path.dirname(os.path.abspath(__file__))
+        icon_path = os.path.join(base_path, "assets", "vsn_logo.jpg")
+
+        self.setWindowIcon(QIcon(icon_path))
         
         self.current_dataframe: pl.DataFrame = None
         self.filter_engine: FilterEngine = None
@@ -219,30 +226,31 @@ class MainWindow(QMainWindow):
         header_layout.setSpacing(15)
         header_widget.setLayout(header_layout)
 
-        # App Title with icon
-        title = QLabel("📊 Excel Data Filter Pro")
-        title_font = QFont("Segoe UI", 14, QFont.Weight.Bold)
-        title.setFont(title_font)
-        title.setAlignment(Qt.AlignmentFlag.AlignVCenter)
-        title.setStyleSheet(
-            """
-            QLabel {
-                color: #ffffff;
-                background: transparent;
-                padding: 5px 0px;
-                margin: 0px;
-                font-weight: bold;
-            }
-        """
-        )
-        header_layout.addWidget(title)
+        # # App Title with icon
+        # title = QLabel("📊 Excel Data Filter Pro")
+        # title_font = QFont("Segoe UI", 14, QFont.Weight.Bold)
+        # title.setFont(title_font)
+        # title.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        # title.setStyleSheet(
+        #     """
+        #     QLabel {
+        #         color: #ffffff;
+        #         background: transparent;
+        #         padding: 5px 0px;
+        #         margin: 0px;
+        #         font-weight: bold;
+        #     }
+        # """
+        # )
+        # header_layout.addWidget(title)
 
-        header_layout.addSpacing(20)
+        # header_layout.addSpacing(20)
 
         # Open file button
         open_btn = QPushButton("📁 Open Excel File")
-        open_btn.setFixedHeight(32)
+        open_btn.setFixedHeight(40)
         open_btn.setMinimumWidth(140)
+        open_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         open_btn.clicked.connect(self._open_file)
         open_btn.setStyleSheet(
             """
@@ -252,17 +260,16 @@ class MainWindow(QMainWindow):
                 color: white;
                 border: 2px solid rgba(255, 255, 255, 0.2);
                 border-radius: 8px;
-                padding: 6px 14px;
+                padding: 8px 16px;
                 font-weight: bold;
-                font-size: 12px;
+                font-size: 13px;
                 font-family: 'Segoe UI';
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #34495e, stop:1 #2c3e50);
                 border: 2px solid rgba(255, 255, 255, 0.3);
-            }
-            QPushButton:pressed {
+            }PushButton:pressed {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #1e2833, stop:1 #2c3e50);
                 border: 2px solid rgba(255, 255, 255, 0.1);
@@ -273,8 +280,9 @@ class MainWindow(QMainWindow):
 
         # Export button
         export_btn = QPushButton("💾 Export Filtered Data")
-        export_btn.setFixedHeight(32)
+        export_btn.setFixedHeight(40)
         export_btn.setMinimumWidth(170)
+        export_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         export_btn.clicked.connect(self._export_data)
         export_btn.setStyleSheet(
             """
@@ -284,15 +292,16 @@ class MainWindow(QMainWindow):
                 color: white;
                 border: 2px solid rgba(255, 255, 255, 0.2);
                 border-radius: 8px;
-                padding: 6px 14px;
+                padding: 8px 16px;
                 font-weight: bold;
-                font-size: 12px;
+                font-size: 13px;
                 font-family: 'Segoe UI';
             }
             QPushButton:hover {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
                     stop:0 #2980b9, stop:1 #3498db);
                 border: 2px solid rgba(255, 255, 255, 0.3);
+                cursor: pointer;
             }
             QPushButton:pressed {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -323,10 +332,9 @@ class MainWindow(QMainWindow):
         self.sheet_switcher.setMinimumWidth(150)
         self.sheet_switcher.setMaximumWidth(200)
         self.sheet_switcher.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.sheet_switcher.setStyleSheet(UnifiedStyles.get_combobox_style(font_size=11, min_height=28, min_width=150))
+        UnifiedStyles.apply_combobox_popup_style(self.sheet_switcher)
         self.sheet_switcher.currentTextChanged.connect(self._on_sheet_changed)
-        
-        # Apply simple header dropdown style  
-        apply_header_dropdown_style(self.sheet_switcher)
         
         # Initially hide sheet switcher (will be shown when multiple sheets are available)
         self.sheet_label.setVisible(False)
@@ -412,24 +420,37 @@ class MainWindow(QMainWindow):
         # Simple Filter Panel (just a button to open popup filter manager)
         self.filter_panel = SimpleFilterPanel()
         self.filter_panel.filters_applied.connect(self._on_filters_applied)
-        
-        # No need for scroll area - simple panel is compact
         self.filter_panel.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        
+        # Start hidden until a file is loaded
+        self.filter_panel.setVisible(False)
         content_layout.addWidget(self.filter_panel)
+
+        # Initial placeholder message (shown before any file is loaded)
+        self.initial_message = QLabel("📁 Select an Excel file to begin filtering.")
+        self.initial_message.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.initial_message.setStyleSheet("""
+            QLabel {
+                color: #555;
+                font-family: 'Segoe UI';
+                font-size: 16px;
+                font-weight: 600;
+                padding: 40px 20px;
+                border: 2px dashed #d0d0d0;
+                border-radius: 12px;
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #ffffff, stop:1 #f8f9fa);
+            }
+        """)
+        content_layout.addWidget(self.initial_message)
 
         # Preview table (below filters)
         self.preview_table = PreviewTable()
         self.preview_table.setSizePolicy(QSizePolicy.Policy.MinimumExpanding, QSizePolicy.Policy.Expanding)
         self.preview_table.setMinimumWidth(800)  # Ensure minimum width for horizontal scroll
-        self.preview_table.setStyleSheet(
-            """
-            PreviewTable {
-                background-color: #ffffff;
-            }
-        """
-        )
-        content_layout.addWidget(self.preview_table, 1)  # Give more space to table
+        self.preview_table.setStyleSheet("""PreviewTable { background-color: #ffffff; }""")
+        # Start hidden until data loaded
+        self.preview_table.setVisible(False)
+        content_layout.addWidget(self.preview_table, 1)
 
         content_widget.setLayout(content_layout)
         scroll_area.setWidget(content_widget)
@@ -526,7 +547,8 @@ class MainWindow(QMainWindow):
         columns = dataframe.columns if hasattr(dataframe.columns, 'tolist') else dataframe.columns
         if hasattr(columns, 'tolist'):
             columns = columns.tolist()
-        self.filter_panel.set_columns(columns)
+        # Pass dataframe for numeric column detection
+        self.filter_panel.set_columns(columns, dataframe)
         
         # Log success
         from loguru import logger
@@ -552,6 +574,12 @@ class MainWindow(QMainWindow):
             self.sheet_switcher.clear()
             self.sheet_switcher.setVisible(False)
             self.sheet_label.setVisible(False)
+            # Hide interactive panels until data loads
+            self.filter_panel.setVisible(False)
+            self.preview_table.setVisible(False)
+            if self.initial_message:
+                self.initial_message.setText("📁 Loading file... Please wait")
+                self.initial_message.setVisible(True)
             
             self.current_filepath = filepath
             config_manager.update_recent_files(filepath)
@@ -667,6 +695,10 @@ class MainWindow(QMainWindow):
         self.progress_bar.setVisible(True)
         self.progress_bar.setValue(0)
 
+        # Update placeholder during loading
+        if self.initial_message and self.initial_message.isVisible():
+            self.initial_message.setText(f"⏳ Loading {Path(filepath).name}...")
+
         self.load_thread = LoadDataThread(filepath, sheet_name)
         self.load_thread.finished.connect(self._on_data_loaded)
         self.load_thread.error.connect(self._on_load_error)
@@ -686,6 +718,12 @@ class MainWindow(QMainWindow):
         # Cache the loaded sheet data
         if self.current_sheet:
             self.sheet_cache[self.current_sheet] = df
+
+        # Reveal interactive panels now that data exists
+        if self.initial_message and self.initial_message.isVisible():
+            self.initial_message.setVisible(False)
+        self.filter_panel.setVisible(True)
+        self.preview_table.setVisible(True)
 
         # Update filter panel with columns
         self.filter_panel.set_columns(df.columns)
@@ -721,6 +759,12 @@ class MainWindow(QMainWindow):
         """Handle filters applied from filter panel."""
         # If no filters (clear was clicked), show original data
         if not filters:
+            # Check if data is loaded before trying to display
+            if self.current_dataframe is None:
+                QMessageBox.warning(self, "No Data", "Please load data first before clearing filters")
+                self.status_label.setText("❌ No data loaded")
+                return
+            
             self.preview_table.set_data(self.current_dataframe)
             self.status_label.setText(
                 f"✅ Showing original data: {len(self.current_dataframe):,} rows"
@@ -754,7 +798,7 @@ class MainWindow(QMainWindow):
                 # Map UI operators to engine operators
                 operator_map = {
                     "contains": "contains",
-                    "is": "equals",
+                    # "is": "equals",  # removed deprecated UI operator
                     "not contains": "not_contains",
                     "starts with": "starts_with",
                     "ends with": "ends_with",

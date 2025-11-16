@@ -158,12 +158,21 @@ class SimpleFilterPanel(QWidget):
         Also detect numeric columns (all non-empty values numeric) for dynamic operator display."""
         self.columns = [col for col in columns if not col.lower().endswith(("_v1", "_uni"))]
         self.numeric_columns = []
+        
+        if dataframe is None:
+            logger.warning("No dataframe provided to set_columns - numeric detection skipped")
+        
         try:
             if dataframe is not None:
                 import polars as pl
+                import re
+                logger.debug(f"Starting numeric detection for {len(self.columns)} columns")
+                
                 for col in self.columns:
                     try:
                         s = dataframe[col]
+                        logger.debug(f"Checking column '{col}' with dtype: {s.dtype}")
+                        
                         # Direct numeric dtypes
                         if s.dtype in (
                             pl.Int8, pl.Int16, pl.Int32, pl.Int64,
@@ -171,19 +180,54 @@ class SimpleFilterPanel(QWidget):
                             pl.Float32, pl.Float64
                         ):
                             self.numeric_columns.append(col)
+                            logger.info(f"✓ Column '{col}' detected as numeric (dtype: {s.dtype})")
                             continue
-                        # For Utf8 columns, inspect content
+                        
+                        # For Utf8 columns, inspect content - filter out null/empty first
                         if s.dtype == pl.Utf8:
-                            values = [v for v in s.to_list() if v is not None and str(v).strip() != ""]
-                            if values and all(__import__("re").match(r"^-?\d+(\.\d+)?$", str(v).strip()) for v in values):
+                            # Get all values, filter nulls and empty strings
+                            all_values = s.to_list()
+                            non_empty_values = [v for v in all_values if v is not None and str(v).strip() != ""]
+                            
+                            logger.debug(f"Column '{col}': {len(all_values)} total, {len(non_empty_values)} non-empty")
+                            
+                            # Need at least some values to check
+                            if len(non_empty_values) < 1:
+                                logger.debug(f"Column '{col}': skipped (no non-empty values)")
+                                continue
+                            
+                            # Sample up to 200 values for checking (better coverage)
+                            sample_values = non_empty_values[:200]
+                            
+                            # Check if values are numeric (allow decimals and negative numbers)
+                            numeric_count = 0
+                            for v in sample_values:
+                                v_str = str(v).strip()
+                                # Match: optional minus, digits, optional decimal point and digits
+                                if re.match(r'^-?\d+\.?\d*$', v_str):
+                                    numeric_count += 1
+                            
+                            # Consider numeric if at least 80% are numeric (allows for some errors/headers)
+                            threshold = 0.8
+                            ratio = numeric_count / len(sample_values)
+                            
+                            if ratio >= threshold:
                                 self.numeric_columns.append(col)
-                    except Exception:
+                                logger.info(f"✓ Column '{col}' detected as numeric string ({numeric_count}/{len(sample_values)} = {ratio:.1%} numeric)")
+                            else:
+                                logger.debug(f"Column '{col}' is Utf8 but not numeric ({numeric_count}/{len(sample_values)} = {ratio:.1%} numeric, threshold: {threshold:.1%})")
+                                
+                    except Exception as e:
+                        logger.error(f"Error checking column '{col}': {e}")
                         continue
-        except Exception:
+        except Exception as e:
+            logger.error(f"Error in numeric detection: {e}")
             # Fallback: leave numeric_columns empty on failure
             pass
+        
         logger.info(
-            f"SimpleFilterPanel: Set {len(self.columns)} columns (numeric: {len(getattr(self,'numeric_columns', []))})"
+            f"SimpleFilterPanel: Set {len(self.columns)} filterable columns | "
+            f"Detected {len(self.numeric_columns)} numeric columns: {self.numeric_columns}"
         )
 
     def _open_filter_manager(self):

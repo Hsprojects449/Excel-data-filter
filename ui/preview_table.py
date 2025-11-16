@@ -18,6 +18,8 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFont, QColor, QCursor
 import polars as pl
+import re
+import unicodedata
 from ui.unified_styles import UnifiedStyles
 
 
@@ -203,6 +205,12 @@ class PreviewTable(QWidget):
 
         # Table with enhanced scrolling
         self.table_widget = QTableWidget()
+        # Prefer a font that supports Indic scripts so Telugu renders correctly
+        try:
+            self.table_widget.setFont(QFont("Nirmala UI", 11))
+        except Exception:
+            # Fallback to default if font not available
+            self.table_widget.setFont(QFont("Segoe UI", 11))
         self.table_widget.setColumnCount(0)
         self.table_widget.setRowCount(0)
         self.table_widget.setSortingEnabled(False)  # We'll handle sorting manually
@@ -446,7 +454,15 @@ class PreviewTable(QWidget):
         # Populate table
         for row_idx, row in enumerate(page_data.iter_rows()):
             for col_idx, value in enumerate(row):
-                item = QTableWidgetItem(str(value))
+                # Sanitize value to remove carriage returns and trailing spaces
+                text = self._sanitize_cell_value(value)
+                
+                item = QTableWidgetItem(text)
+                # Explicitly set font per item to ensure complex-script shaping is used
+                try:
+                    item.setFont(QFont("Nirmala UI", 10))
+                except Exception:
+                    item.setFont(QFont("Segoe UI", 10))
                 item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEditable)
 
                 # Alternate row colors
@@ -525,3 +541,39 @@ class PreviewTable(QWidget):
         self.rows_per_page = value
         self.current_page = 0
         self._update_table()
+
+    def _sanitize_cell_value(self, value):
+        """Sanitize cell values for display to prevent artifacts like _x000D_.
+        
+        Removes carriage returns, control characters, and trailing spaces
+        that can cause display issues, especially with Telugu and other Indic scripts.
+        """
+        # Handle None
+        if value is None:
+            return ""
+        
+        # Convert to string
+        try:
+            if isinstance(value, (bytes, bytearray)):
+                text = value.decode("utf-8", errors="replace")
+            else:
+                text = str(value)
+        except Exception:
+            text = str(value)
+        
+        # Remove carriage return characters (which display as _x000D_ in some contexts)
+        text = text.replace('\r', '')
+        
+        # Remove other control characters except newline and tab
+        text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F]', '', text)
+        
+        # Strip trailing spaces and non-breaking spaces
+        text = re.sub(r'[ \t\u00A0]+$', '', text)
+        
+        # Normalize Unicode to NFC for better rendering of complex scripts
+        try:
+            text = unicodedata.normalize("NFC", text)
+        except Exception:
+            pass
+        
+        return text

@@ -315,7 +315,9 @@ class ExcelExporter:
         """Get information about the export dataset."""
         total_rows = len(self.dataframe)
         total_cols = len(self.dataframe.columns)
-        estimated_size_mb = (total_rows * total_cols * 50) / (1024 * 1024)  # Rough estimate
+        # More realistic estimate: ~7 bytes per cell on average (includes XML overhead)
+        # Excel files are compressed, so actual size is typically smaller than raw data
+        estimated_size_mb = (total_rows * total_cols * 7) / (1024 * 1024)
         
         return {
             "rows": total_rows,

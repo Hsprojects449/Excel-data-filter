@@ -725,8 +725,13 @@ class MainWindow(QMainWindow):
         self.filter_panel.setVisible(True)
         self.preview_table.setVisible(True)
 
-        # Update filter panel with columns
-        self.filter_panel.set_columns(df.columns)
+        # Update filter panel with columns (pass dataframe so numeric detection works)
+        try:
+            self.filter_panel.set_columns(df.columns, dataframe=df)
+        except Exception as e:
+            logger.error(f"Failed to set columns with numeric detection: {e}")
+            # Fallback without numeric detection if something unexpected occurs
+            self.filter_panel.set_columns(df.columns)
 
         # Update preview table
         self.preview_table.set_data(df)
@@ -816,7 +821,7 @@ class MainWindow(QMainWindow):
                 self.filter_engine.add_filter(rule)
 
             # Apply all filters with specified logic
-            filtered_df = self.filter_engine.apply_filters()
+            filtered_df = self.filter_engine.apply_filters(logic=logic)
 
             # Update preview with filtered data
             self.preview_table.set_data(filtered_df)

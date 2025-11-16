@@ -7,6 +7,7 @@ Handles large files efficiently with lazy loading.
 from pathlib import Path
 from typing import Optional
 import polars as pl
+import re
 from openpyxl import load_workbook
 from loguru import logger
 
@@ -48,6 +49,10 @@ class ExcelReader:
                 sheet_name=sheet_name,
             )
 
+            # Sanitize all string columns to remove carriage returns and trailing spaces
+            # This prevents _x000D_ artifacts in display and export
+            df = self._sanitize_dataframe(df)
+
             self.dataframe = df
             logger.info(f"Loaded {len(df)} rows, {len(df.columns)} columns")
             return df
@@ -83,3 +88,26 @@ class ExcelReader:
             "column_names": self.dataframe.columns,
             "memory_usage_mb": self.dataframe.estimated_size("mb"),
         }
+
+    def _sanitize_dataframe(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Sanitize all string columns in the dataframe.
+        
+        Removes carriage returns (\r), control characters, and trailing spaces
+        that can cause display artifacts like _x000D_ especially with Telugu text.
+        """
+        try:
+            # Process each column
+            for col in df.columns:
+                # Only process string/text columns
+                if df[col].dtype == pl.Utf8:
+                    df = df.with_columns(
+                        pl.col(col)
+                        .str.replace_all('_x000D_', '')  # Remove literal _x000D_ strings first
+                        .str.replace_all('\r\n', '\n')  # Replace CRLF with LF
+                        .str.replace_all('\r', '')  # Remove remaining carriage returns
+                        .str.strip_chars_end()  # Remove all trailing whitespace
+                    )
+            return df
+        except Exception as e:
+            logger.warning(f"Failed to sanitize dataframe: {e}")
+            return df  # Return original if sanitization fails

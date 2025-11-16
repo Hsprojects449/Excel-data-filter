@@ -93,7 +93,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='Excel_Data_Filter_Pro',
+    name='XLS_Filter_Pro',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -106,5 +106,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=None,  # Add path to .ico file if you have an icon
+    icon='ui/assets/vsn_logo.ico',  # Embedded taskbar/window icon
 )

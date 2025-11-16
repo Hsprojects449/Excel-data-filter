@@ -3,11 +3,11 @@ Main entry point for the Excel Data Filter application.
 """
 
 import sys
+import os
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QIcon
 from ui.main_window import MainWindow
 from services.logger import logger
-from PyQt6.QtGui import QIcon
-import os
 
 __version__ = "1.0.0"
 
@@ -16,12 +16,24 @@ def main():
     """Main application entry point."""
     logger.info(f"Excel Data Filter v{__version__} starting...")
 
+    # On Windows, set AppUserModelID so the taskbar uses our app identity/icon
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+            myappid = u"Hsprojects449.XLS_Filter_Pro"
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+            logger.debug("AppUserModelID set for taskbar icon grouping")
+        except Exception as e:
+            logger.debug(f"Failed to set AppUserModelID: {e}")
+
     app = QApplication(sys.argv)
-    # Resolve icons from the packaged ui/assets directory
-    base_path = os.path.dirname(os.path.abspath(__file__))
-    ui_base = os.path.join(base_path, "ui")
-    icon_path = os.path.join(ui_base, "assets", "vsn_logo.jpg")
-    win_icon_path = os.path.join(ui_base, "assets", "favicon.ico")
+
+    # Resolve icon path for both dev and PyInstaller (frozen) environments
+    if getattr(sys, 'frozen', False):
+        base_path = sys._MEIPASS  # type: ignore[attr-defined]
+    else:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    icon_path = os.path.join(base_path, "ui", "assets", "vsn_logo.ico")
     
     # Set light theme as default instead of system theme
     app.setStyle('Fusion')  # Use Fusion style for consistent appearance
@@ -131,10 +143,20 @@ def main():
     
     app.setStyleSheet(professional_palette)
 
-    app.setWindowIcon(QIcon(icon_path))
+    # Prefer ICO for Windows taskbar; fallback to JPG only if ICO missing
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+    else:
+        fallback_jpg = os.path.join(base_path, "ui", "assets", "vsn_logo.jpg")
+        if os.path.exists(fallback_jpg):
+            app.setWindowIcon(QIcon(fallback_jpg))
+        else:
+            logger.warning(f"App icon not found at {icon_path}")
     
     window = MainWindow()
-    #window.setWindowIcon(QIcon(win_icon_path))
+    # Ensure main window also has the ICO icon explicitly for consistency
+    if os.path.exists(icon_path):
+        window.setWindowIcon(QIcon(icon_path))
     window.show()
 
     logger.info("Application window shown")

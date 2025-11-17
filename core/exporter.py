@@ -13,11 +13,13 @@ from loguru import logger
 
 class ExcelExporter:
     """Exports Polars DataFrames to Excel files with enhanced features."""
+    def __init__(self, dataframe: Optional[pl.DataFrame] = None):
+        """Initialize exporter with an optional Polars DataFrame.
 
-    def __init__(self, dataframe: pl.DataFrame):
+        Args:
+            dataframe: The DataFrame to export. Can be set later by assigning to `self.dataframe`.
+        """
         self.dataframe = dataframe
-        self.workbook = None
-        self.worksheet = None
 
     def export(
         self,
@@ -26,7 +28,7 @@ class ExcelExporter:
         include_index: bool = False,
         auto_format: bool = True,
         progress_callback: Optional[Callable[[int, str], None]] = None,
-        chunk_size: int = 1000,
+        chunk_size: Optional[int] = None,
     ) -> bool:
         """
         Export dataframe to Excel file with progress reporting.
@@ -37,18 +39,23 @@ class ExcelExporter:
             include_index: Whether to include row index
             auto_format: Whether to apply auto-formatting (headers, borders, etc)
             progress_callback: Function to call with progress updates (percentage, message)
-            chunk_size: Number of rows to process at once for large datasets
+            chunk_size: Number of rows to process at once. If None, defaults to 10% of total rows (min 1000, max 50000)
 
         Returns:
             True if successful, False otherwise
         """
         try:
+            if getattr(self, "dataframe", None) is None:
+                logger.error("No dataframe provided to ExcelExporter for export")
+                if progress_callback:
+                    progress_callback(0, "No data to export")
+                return False
+
             if progress_callback:
                 progress_callback(5, "Preparing export...")
 
             output_path = Path(output_path)
-            
-            # Ensure output directory exists with better error handling
+            # Ensure output directory exists
             try:
                 output_path.parent.mkdir(parents=True, exist_ok=True)
             except PermissionError as e:
@@ -62,19 +69,23 @@ class ExcelExporter:
                     progress_callback(0, f"Cannot create directory: {str(e)}")
                 return False
 
-            # Check dataset size and warn for very large exports
-            total_rows = len(self.dataframe)
-            total_cols = len(self.dataframe.columns)
-            
+            # Exclude internal columns from export
+            df = self.dataframe.drop("_row_hash") if "_row_hash" in self.dataframe.columns else self.dataframe
+            total_rows = len(df)
+            total_cols = len(df.columns)
+
+            # Auto-calculate chunk size as 10% of total rows if not specified
+            if chunk_size is None:
+                chunk_size = max(1000, min(50000, int(total_rows * 0.1)))
+                logger.debug(f"Auto-calculated chunk size: {chunk_size:,} rows ({total_rows:,} total)")
+
             if progress_callback:
                 progress_callback(10, f"Exporting {total_rows:,} rows × {total_cols} columns...")
 
-            # Create Excel workbook with optimized settings for large data
+            # Create Excel workbook
             workbook_options = {}
-            if total_rows > 10000:  # For large datasets
-                workbook_options['constant_memory'] = True
-
-            # Try to create workbook with better error handling
+            if total_rows > 10000:
+                workbook_options["constant_memory"] = True
             try:
                 workbook = xlsxwriter.Workbook(str(output_path), workbook_options)
                 worksheet = workbook.add_worksheet(sheet_name)
@@ -92,40 +103,35 @@ class ExcelExporter:
             if progress_callback:
                 progress_callback(15, "Setting up formatting...")
 
-            # Define formats
-            header_format = workbook.add_format(
-                {
-                    "bold": True,
-                    "bg_color": "#4472C4",
-                    "font_color": "white",
-                    "border": 1,
-                    "align": "center",
-                    "valign": "vcenter",
-                    "font_name": "Segoe UI",
-                    "font_size": 11,
-                }
-            ) if auto_format else None
+            # Formats
+            header_format = workbook.add_format({
+                "bold": True,
+                "bg_color": "#4472C4",
+                "font_color": "white",
+                "border": 1,
+                "align": "center",
+                "valign": "vcenter",
+                "font_name": "Segoe UI",
+                "font_size": 11,
+            }) if auto_format else None
 
-            data_format = workbook.add_format(
-                {
-                    "border": 1, 
-                    "align": "left", 
-                    "valign": "vcenter",
-                    "font_name": "Segoe UI",
-                    "font_size": 10,
-                }
-            ) if auto_format else None
+            data_format = workbook.add_format({
+                "border": 1,
+                "align": "left",
+                "valign": "vcenter",
+                "font_name": "Segoe UI",
+                "font_size": 10,
+            }) if auto_format else None
 
-            # Optimize for large datasets
             if auto_format and total_rows > 1000:
-                # Disable some formatting for very large datasets to improve performance
+                # Reduce borders for large datasets
                 data_format.set_border(0)
 
             if progress_callback:
                 progress_callback(20, "Writing headers...")
 
-            # Write headers
-            for col_idx, col_name in enumerate(self.dataframe.columns):
+            # Headers
+            for col_idx, col_name in enumerate(df.columns):
                 if header_format:
                     worksheet.write(0, col_idx, col_name, header_format)
                 else:
@@ -134,46 +140,32 @@ class ExcelExporter:
             if progress_callback:
                 progress_callback(25, "Writing data...")
 
-            # Write data in chunks for better memory management
+            # Data writing (chunked)
             rows_processed = 0
-            total_progress_range = 70  # 25% to 95% for data writing
-            
-            # Convert to pandas for efficient chunked writing if dataset is large
+            total_progress_range = 70
             if total_rows > chunk_size:
-                # Process in chunks
                 for start_idx in range(0, total_rows, chunk_size):
                     end_idx = min(start_idx + chunk_size, total_rows)
-                    chunk = self.dataframe.slice(start_idx, end_idx - start_idx)
-                    
-                    # Write chunk
+                    chunk = df.slice(start_idx, end_idx - start_idx)
                     for row_idx, row in enumerate(chunk.iter_rows(), start=start_idx + 1):
                         for col_idx, value in enumerate(row):
-                            # Handle None/null values
                             display_value = "" if value is None else value
-                            
-                            if data_format and total_rows <= 5000:  # Only format smaller datasets
+                            if data_format and total_rows <= 5000:
                                 worksheet.write(row_idx, col_idx, display_value, data_format)
                             else:
                                 worksheet.write(row_idx, col_idx, display_value)
-                    
                     rows_processed = end_idx
                     if progress_callback:
                         progress = 25 + int((rows_processed / total_rows) * total_progress_range)
                         progress_callback(progress, f"Written {rows_processed:,} of {total_rows:,} rows...")
-
             else:
-                # Small dataset - write directly
-                for row_idx, row in enumerate(self.dataframe.iter_rows(), start=1):
+                for row_idx, row in enumerate(df.iter_rows(), start=1):
                     for col_idx, value in enumerate(row):
-                        # Handle None/null values  
                         display_value = "" if value is None else value
-                        
                         if data_format:
                             worksheet.write(row_idx, col_idx, display_value, data_format)
                         else:
                             worksheet.write(row_idx, col_idx, display_value)
-                    
-                    # Update progress periodically
                     if row_idx % 100 == 0 and progress_callback:
                         progress = 25 + int((row_idx / total_rows) * total_progress_range)
                         progress_callback(progress, f"Written {row_idx:,} of {total_rows:,} rows...")
@@ -181,31 +173,21 @@ class ExcelExporter:
             if progress_callback:
                 progress_callback(95, "Finalizing formatting...")
 
-            # Auto-adjust column widths (skip for very large datasets)
+            # Auto column widths (skip for very large)
             if auto_format and total_rows <= 10000:
-                for col_idx, col_name in enumerate(self.dataframe.columns):
-                    # Calculate optimal width
+                for col_idx, col_name in enumerate(df.columns):
                     header_width = len(str(col_name))
-                    
-                    # Sample some data to estimate width (for performance)
                     sample_size = min(1000, total_rows)
-                    sample_data = self.dataframe.head(sample_size)
-                    
-                    max_data_width = 0
+                    sample_data = df.head(sample_size)
                     try:
-                        max_data_width = max(
-                            (len(str(val)) for val in sample_data[col_name] if val is not None),
-                            default=0,
-                        )
-                    except:
-                        max_data_width = 10  # fallback width
-
+                        max_data_width = max((len(str(val)) for val in sample_data[col_name] if val is not None), default=0)
+                    except Exception:
+                        max_data_width = 10
                     optimal_width = max(header_width, max_data_width)
                     worksheet.set_column(col_idx, col_idx, min(optimal_width + 2, 50))
 
-            # Add freeze panes for better navigation
             if auto_format:
-                worksheet.freeze_panes(1, 0)  # Freeze header row
+                worksheet.freeze_panes(1, 0)
 
             if progress_callback:
                 progress_callback(98, "Saving file...")
@@ -216,11 +198,14 @@ class ExcelExporter:
                 progress_callback(100, "Export completed!")
 
             file_size_mb = output_path.stat().st_size / (1024 * 1024)
-            logger.info(
-                f"Successfully exported {total_rows:,} rows to {output_path.name} "
-                f"({file_size_mb:.1f} MB)"
-            )
+            logger.info(f"Successfully exported {total_rows:,} rows to {output_path.name} ({file_size_mb:.1f} MB)")
             return True
+
+        except Exception as e:
+            logger.error(f"Export failed: {e}")
+            if progress_callback:
+                progress_callback(0, f"Export failed: {str(e)}")
+            return False
 
         except Exception as e:
             logger.error(f"Export failed: {e}")
@@ -235,6 +220,12 @@ class ExcelExporter:
     ) -> bool:
         """Export dataframe to CSV file with progress reporting."""
         try:
+            if getattr(self, "dataframe", None) is None:
+                logger.error("No dataframe provided to ExcelExporter for CSV export")
+                if progress_callback:
+                    progress_callback(0, "No data to export")
+                return False
+
             if progress_callback:
                 progress_callback(10, "Preparing CSV export...")
 
@@ -254,7 +245,9 @@ class ExcelExporter:
                     progress_callback(0, f"Cannot create directory: {str(e)}")
                 return False
 
-            total_rows = len(self.dataframe)
+            # Exclude internal columns from CSV export too
+            df = self.dataframe.drop("_row_hash") if "_row_hash" in self.dataframe.columns else self.dataframe
+            total_rows = len(df)
             
             if progress_callback:
                 progress_callback(30, f"Exporting {total_rows:,} rows to CSV...")
@@ -263,7 +256,7 @@ class ExcelExporter:
             try:
                 # Write CSV (Polars uses UTF-8 by default)
                 # To ensure proper Telugu character support in Excel, write BOM manually
-                csv_bytes = self.dataframe.write_csv().encode('utf-8')
+                csv_bytes = df.write_csv().encode('utf-8')
                 with open(output_path, 'wb') as f:
                     f.write(b'\xef\xbb\xbf')  # UTF-8 BOM
                     f.write(csv_bytes)

@@ -38,14 +38,41 @@ class EditedCellDelegate(QStyledItemDelegate):
         # First, do the default painting
         super().paint(painter, option, index)
         
-        # Calculate global row index
+        # Quick exit if no edits
+        if not self.preview_table.edits:
+            return
+        
+        # Get row and column (visible column index)
         row_idx = index.row()
         col_idx = index.column()
-        start_row = self.preview_table.current_page * self.preview_table.rows_per_page
-        global_row_idx = start_row + row_idx
         
-        # Check if this cell is edited
-        if (global_row_idx, col_idx) in self.preview_table.edits:
+        # Use cached display data if available
+        display_data = self.preview_table._display_data_cache
+        if display_data is None or not self.preview_table._display_data_cache_valid:
+            display_data = self.preview_table._get_display_data()
+        
+        if display_data is None or len(display_data) == 0:
+            return
+        
+        start_row = self.preview_table.current_page * self.preview_table.rows_per_page
+        end_row = min(start_row + self.preview_table.rows_per_page, len(display_data))
+        
+        if row_idx >= min(self.preview_table.rows_per_page, end_row - start_row):
+            return
+        
+        # Map visible column index to actual column name
+        visible_columns = self.preview_table._get_visible_columns(display_data)
+        if col_idx >= len(visible_columns):
+            return
+        col_name = visible_columns[col_idx]
+
+        # Pull stable row hash directly from dataframe if available
+        row_abs_idx = start_row + row_idx
+        row_hash = self.preview_table._get_row_hash_from_frame(display_data, row_abs_idx)
+        
+        # Check if this cell is edited (include sheet name in key)
+        edit_key = (self.preview_table.current_sheet_name, row_hash, col_name)
+        if edit_key in self.preview_table.edits:
             # Draw orange border
             painter.save()
             pen = QPen(QColor("#FF9800"), 1)  # Orange, 1px thick
@@ -61,22 +88,101 @@ class PreviewTable(QWidget):
     def __init__(self):
         super().__init__()
         self.dataframe: pl.DataFrame = None
+        self.original_dataframe: pl.DataFrame = None  # Store original unfiltered data for hash calculation
         self.current_page = 0
         self.rows_per_page = 100
         self.sort_column = None
         self.sort_ascending = True
-        # Track edited cells: key=(global_row_idx, col_idx), value=new_value
+        self.current_sheet_name = None  # Track which sheet we're viewing
+        # Track edited cells using row content hash to preserve across filtering
+        # key=(sheet_name, row_hash, col_name), value=new_value
         self.edits = {}
-        # Store original sanitized values for each cell to detect true changes
-        # key=(global_row_idx, col_idx) -> original_value
+        # Store original sanitized values: key=(sheet_name, row_hash, col_name) -> original_value
         self.original_values = {}
+        # Edit version increments on every edit (even re-editing same cell)
+        self.edit_version = 0
         # Zoom level (100 = normal, 50-200 range)
         self.zoom_level = 100
         # References to filter panel widgets (set externally)
         self.edit_counter_label = None
         self.undo_all_btn = None
+        # Cache for display data to improve performance
+        self._display_data_cache = None
+        self._display_data_cache_valid = False
 
         self._init_ui()
+
+    def _get_visible_columns(self, df: pl.DataFrame):
+        """Return columns excluding internal/hidden ones."""
+        if df is None:
+            return []
+        return [c for c in df.columns if c != "_row_hash"]
+
+    def _get_row_hash_from_frame(self, df: pl.DataFrame, row_idx: int) -> str:
+        """Fetch `_row_hash` for a given absolute row from a dataframe, with fallback."""
+        try:
+            if "_row_hash" in df.columns:
+                return str(df[row_idx, "_row_hash"])  # fast path
+        except Exception:
+            pass
+        # Fallback to legacy computation if needed
+        try:
+            row = list(df.row(row_idx))
+            return self._find_row_hash_in_original(row, df.columns)
+        except Exception:
+            return ""
+    
+    def _get_row_hash(self, row_tuple) -> str:
+        """Generate unique hash for a row based on its content.
+        This allows edits to persist across filtering and sorting.
+        """
+        # Create a string from all values in the row
+        row_str = "|".join(str(val) if val is not None else "" for val in row_tuple)
+        return str(hash(row_str))
+    
+    def _find_row_hash_in_original(self, row_data, columns) -> str:
+        """Find the hash of a row by matching it in the original dataframe.
+        
+        This ensures consistent hashing even when working with filtered data.
+        When a row is in filtered data, we need to find it in the original
+        dataframe to get the same hash that was used when the edit was stored.
+        
+        Args:
+            row_data: The row data (list/tuple) from current (possibly filtered) dataframe
+            columns: Column names from current dataframe
+            
+        Returns:
+            str: The row hash from original dataframe
+        """
+        # If no original dataframe, fall back to direct hash calculation
+        if self.original_dataframe is None:
+            return self._get_row_hash(row_data)
+        
+        # Search for matching row in original dataframe by comparing sanitized content
+        # The row_data comes from the underlying dataframe (not edited display values)
+        try:
+            for orig_row in self.original_dataframe.iter_rows():
+                # Check if rows match by comparing all values
+                if len(orig_row) == len(row_data):
+                    # Compare each sanitized value
+                    match = True
+                    for orig_val, curr_val in zip(orig_row, row_data):
+                        # Compare sanitized string representations
+                        if self._sanitize_cell_value(orig_val) != self._sanitize_cell_value(curr_val):
+                            match = False
+                            break
+                    
+                    if match:
+                        # Found matching row, return its hash
+                        return self._get_row_hash(orig_row)
+            
+            # If no match found, calculate hash directly from row_data
+            # This handles cases where the row might not be in original (shouldn't happen)
+            return self._get_row_hash(row_data)
+            
+        except Exception as e:
+            # On any error, fall back to direct hash
+            return self._get_row_hash(row_data)
 
     def _init_ui(self):
         """Initialize the table UI."""
@@ -336,6 +442,12 @@ class PreviewTable(QWidget):
         self.table_widget.horizontalHeader().sectionClicked.connect(self._on_header_clicked)
         # Connect item changed signal for tracking edits
         self.table_widget.itemChanged.connect(self._on_item_changed)
+        # UI performance tweaks
+        try:
+            self.table_widget.setUniformRowHeights(True)
+        except Exception:
+            pass
+        self.table_widget.setWordWrap(False)
         
         # Install custom delegate for drawing red borders on edited cells
         self.edited_cell_delegate = EditedCellDelegate(self)
@@ -490,8 +602,13 @@ class PreviewTable(QWidget):
             # Fallback: Ensure at least basic smooth scrolling
             pass
 
-    def set_data(self, dataframe: pl.DataFrame):
-        """Load data into the preview table."""
+    def set_data(self, dataframe: pl.DataFrame, is_filtered: bool = False):
+        """Load data into the preview table.
+        
+        Args:
+            dataframe: The dataframe to display
+            is_filtered: True if this is filtered data, False if original/full data
+        """
         # Check if dataframe is None or empty
         if dataframe is None:
             self.table_widget.setColumnCount(0)
@@ -507,11 +624,20 @@ class PreviewTable(QWidget):
         
         # Show all columns exactly as in the Excel source (no exclusions here)
         self.dataframe = dataframe
+        
+        # Store original unfiltered dataframe for hash calculation
+        if not is_filtered:
+            self.original_dataframe = dataframe
+        
+        # Invalidate display data cache
+        self._display_data_cache_valid = False
+        self._display_data_cache = None
+        
         self.current_page = 0
         self.sort_column = None  # Reset sorting when new data is loaded
         self.sort_ascending = True
-        # Clear edits when loading new data
-        self.edits.clear()
+        # Don't clear edits - they are preserved using row hash
+        # self.edits.clear()  # REMOVED to preserve edits across filtering
         self._update_table()
         
         # Restore scroll position after a brief delay
@@ -538,18 +664,54 @@ class PreviewTable(QWidget):
         if self.dataframe is None:
             return None
         
+        # Return cached data if valid
+        if self._display_data_cache_valid and self._display_data_cache is not None:
+            return self._display_data_cache
+        
         display_data = self.dataframe
         
-        # Apply sorting if a column is selected
-        if self.sort_column and self.sort_column in display_data.columns:
+        # Apply sorting if a column is selected (skip internal columns)
+        if self.sort_column and self.sort_column in display_data.columns and self.sort_column != "_row_hash":
             try:
-                display_data = display_data.sort(self.sort_column, descending=not self.sort_ascending)
+                # If there are edits and we're sorting on an edited column, sort by a patched series
+                if self.edits and self._column_has_edits(self.sort_column):
+                    base = display_data[self.sort_column].to_list()
+                    # Build a fast index by row hash once
+                    try:
+                        hash_to_index = {h: i for i, h in enumerate(display_data["_row_hash"].to_list())}
+                    except Exception:
+                        hash_to_index = {}
+                    # Apply only edited values for this column
+                    for (sheet, row_hash, col) in list(self.edits.keys()):
+                        if sheet != self.current_sheet_name or col != self.sort_column:
+                            continue
+                        idx = hash_to_index.get(row_hash)
+                        if idx is not None and 0 <= idx < len(base):
+                            base[idx] = self.edits[(sheet, row_hash, col)]
+                    # Use a temporary column for sorting
+                    display_data = display_data.with_columns(
+                        pl.Series(name="__temp_sort__", values=base, strict=False)
+                    ).sort("__temp_sort__", descending=not self.sort_ascending).drop("__temp_sort__")
+                else:
+                    # No edits in this column, use normal sorting
+                    display_data = display_data.sort(self.sort_column, descending=not self.sort_ascending)
             except Exception as e:
-                # If sorting fails, use original data
-                print(f"Sorting failed for column {self.sort_column}: {e}")
-                display_data = self.dataframe
+                # If sorting fails, use unsorted data
+                from loguru import logger
+                logger.warning(f"Sorting failed for column {self.sort_column}: {e}")
+        
+        # Cache the computed display data
+        self._display_data_cache = display_data
+        self._display_data_cache_valid = True
         
         return display_data
+    
+    def _column_has_edits(self, col_name: str) -> bool:
+        """Check if a column has any edits for the current sheet."""
+        for (sheet_name, row_hash, column) in self.edits.keys():
+            if sheet_name == self.current_sheet_name and column == col_name:
+                return True
+        return False
 
     def _update_table(self):
         """Update the table with current page data."""
@@ -562,6 +724,9 @@ class PreviewTable(QWidget):
             self.page_dropdown.clear()
             return
 
+        # Block signals during bulk updates for better performance
+        self.table_widget.blockSignals(True)
+        
         # Calculate pagination
         total_rows = len(display_data)
         total_pages = (total_rows + self.rows_per_page - 1) // self.rows_per_page
@@ -576,13 +741,16 @@ class PreviewTable(QWidget):
         # Get page data
         page_data = display_data[start_row:end_row]
 
+        # Compute visible columns (hide internal columns like _row_hash)
+        visible_columns = self._get_visible_columns(display_data)
+
         # Set table dimensions
-        self.table_widget.setColumnCount(len(display_data.columns))
+        self.table_widget.setColumnCount(len(visible_columns))
         self.table_widget.setRowCount(len(page_data))
 
         # Set column headers with sorting indicators
         headers = []
-        for col in display_data.columns:
+        for col in visible_columns:
             if col == self.sort_column:
                 arrow = "↑" if self.sort_ascending else "↓"
                 headers.append(f"{col} {arrow}")
@@ -601,10 +769,33 @@ class PreviewTable(QWidget):
         self.table_widget.blockSignals(True)
         
         # Populate table
+        # Precompute helpers
+        row_hash_col_idx = display_data.columns.index("_row_hash") if "_row_hash" in display_data.columns else -1
+
         for row_idx, row in enumerate(page_data.iter_rows()):
-            for col_idx, value in enumerate(row):
-                # Sanitize value to remove carriage returns and trailing spaces
-                text = self._sanitize_cell_value(value)
+            # Pull stable row hash directly when available
+            if row_hash_col_idx != -1 and row_hash_col_idx < len(row):
+                row_hash = str(row[row_hash_col_idx])
+            else:
+                row_hash = self._find_row_hash_in_original(row, display_data.columns)
+
+            for col_idx, col_name in enumerate(visible_columns):
+                # Determine value for visible column
+                try:
+                    value = row[display_data.columns.index(col_name)]
+                except Exception:
+                    value = None
+                
+                # Create edit key with sheet name
+                edit_key = (self.current_sheet_name, row_hash, col_name)
+                
+                # Check if this cell has been edited using sheet-aware key
+                if edit_key in self.edits:
+                    # Use the edited value
+                    text = self.edits[edit_key]
+                else:
+                    # Use original sanitized value from dataframe
+                    text = self._sanitize_cell_value(value)
                 
                 item = QTableWidgetItem(text)
                 # Calculate font size based on current zoom level
@@ -618,27 +809,26 @@ class PreviewTable(QWidget):
                 # Make cells editable
                 item.setFlags(item.flags() | Qt.ItemFlag.ItemIsEditable)
 
-                global_row_idx = start_row + row_idx
-
-                # Record original value if first time encountered
-                if (global_row_idx, col_idx) not in self.original_values:
-                    self.original_values[(global_row_idx, col_idx)] = text
+                # Record original value only if first time encountered (preserve true original)
+                # Never overwrite - the first value we see from the dataframe IS the original
+                if edit_key not in self.original_values:
+                    self.original_values[edit_key] = self._sanitize_cell_value(value)
 
                 # Determine base background (alternate rows)
                 base_bg = QColor("#ffffff") if row_idx % 2 == 0 else QColor("#f9f9f9")
                 item.setBackground(base_bg)
 
                 # If edited and value differs from original, highlight
-                if (global_row_idx, col_idx) in self.edits:
-                    edited_val = self.edits[(global_row_idx, col_idx)]
-                    orig_val = self.original_values.get((global_row_idx, col_idx), text)
+                if edit_key in self.edits:
+                    edited_val = self.edits[edit_key]
+                    orig_val = self.original_values.get(edit_key, text)
                     if edited_val != orig_val:
                         item.setBackground(QColor("#fffacd"))
-                        item.setToolTip("✏️ Edited")
+                        item.setToolTip(f"✏️ Edited (was: {orig_val})")
                     else:
                         # Revert edit if same as original
-                        if (global_row_idx, col_idx) in self.edits:
-                            del self.edits[(global_row_idx, col_idx)]
+                        if edit_key in self.edits:
+                            del self.edits[edit_key]
 
                 self.table_widget.setItem(row_idx, col_idx, item)
 
@@ -666,8 +856,13 @@ class PreviewTable(QWidget):
         """Handle column header clicks for sorting."""
         if self.dataframe is None or len(self.dataframe.columns) == 0:
             return
-        
-        column_name = self.dataframe.columns[logical_index]
+
+        # Map header index to visible column name
+        display_data = self._get_display_data()
+        visible_columns = self._get_visible_columns(display_data)
+        if logical_index < 0 or logical_index >= len(visible_columns):
+            return
+        column_name = visible_columns[logical_index]
         
         # Toggle sorting direction if clicking the same column
         if self.sort_column == column_name:
@@ -675,6 +870,10 @@ class PreviewTable(QWidget):
         else:
             self.sort_column = column_name
             self.sort_ascending = True
+        
+        # Invalidate cache when sorting changes
+        self._display_data_cache_valid = False
+        self._display_data_cache = None
         
         # Reset to first page when sorting
         self.current_page = 0
@@ -822,41 +1021,59 @@ class PreviewTable(QWidget):
             row_idx = item.row()
             col_idx = item.column()
             
-            # Calculate global row index (accounting for pagination)
+            # Get display data to access the row
+            display_data = self._get_display_data()
+            if display_data is None:
+                return
+            
             start_row = self.current_page * self.rows_per_page
-            global_row_idx = start_row + row_idx
+            end_row = min(start_row + self.rows_per_page, len(display_data))
+            page_data = display_data[start_row:end_row]
+            
+            if row_idx >= len(page_data):
+                return
+            # Map to visible column name and fetch stable row hash from frame
+            visible_columns = self._get_visible_columns(display_data)
+            if col_idx < 0 or col_idx >= len(visible_columns):
+                return
+            col_name = visible_columns[col_idx]
+            row_abs_idx = start_row + row_idx
+            row_hash = self._get_row_hash_from_frame(display_data, row_abs_idx)
             
             # Get new value
             new_value = item.text()
             
-            # Get column name
-            col_name = self.dataframe.columns[col_idx]
-            
             # Compare with original value to decide if this is a real edit
-            orig_val = self.original_values.get((global_row_idx, col_idx))
+            edit_key = (self.current_sheet_name, row_hash, col_name)
+            orig_key = (self.current_sheet_name, row_hash, col_name)
+            orig_val = self.original_values.get(orig_key)
             if orig_val is None:
-                # If somehow missing (shouldn't happen), treat current value as original
-                self.original_values[(global_row_idx, col_idx)] = new_value
-                orig_val = new_value
+                # If somehow missing, compute from the underlying dataframe row
+                # (page_data contains the source dataframe values, not edited text)
+                try:
+                    underlying_val = self._sanitize_cell_value(page_data[row_idx, col_name])
+                except Exception:
+                    underlying_val = ""
+                self.original_values[orig_key] = underlying_val
+                orig_val = underlying_val
 
             # If value unchanged and existed as edit -> remove edit
             if new_value == orig_val:
-                if (global_row_idx, col_idx) in self.edits:
-                    del self.edits[(global_row_idx, col_idx)]
+                if edit_key in self.edits:
+                    del self.edits[edit_key]
                 # Restore base background (alternating row color)
                 base_bg = QColor("#ffffff") if (row_idx % 2 == 0) else QColor("#f9f9f9")
                 item.setBackground(base_bg)
                 item.setToolTip("")
                 self._update_edit_counter()
-                # Trigger repaint to remove red border
+                # Trigger repaint to remove border
                 self.table_widget.viewport().update()
                 return
 
             # Store / update the edit
-            self.edits[(global_row_idx, col_idx)] = new_value
-            
-            # Apply edit to dataframe
-            self._apply_edit_to_dataframe(global_row_idx, col_name, new_value)
+            self.edits[edit_key] = new_value
+            # Increment version on every edit (including re-edits)
+            self.edit_version += 1
             
             # Mark cell as edited
             item.setBackground(QColor("#fffacd"))  # Light yellow to indicate edit
@@ -865,11 +1082,8 @@ class PreviewTable(QWidget):
             # Update edit counter
             self._update_edit_counter()
             
-            # Trigger repaint to show red border
+            # Trigger repaint to show border
             self.table_widget.viewport().update()
-            
-            from loguru import logger
-            logger.info(f"Cell edited: row {global_row_idx + 1}, column '{col_name}', new value: '{new_value}'") 
             
         except Exception as e:
             from loguru import logger
@@ -887,54 +1101,109 @@ class PreviewTable(QWidget):
             from loguru import logger
             logger.error(f"Error applying edit to dataframe: {e}")
 
-    def get_edited_dataframe(self) -> pl.DataFrame:
-        """Return dataframe with all edits applied."""
-        if self.dataframe is None:
+    def get_edited_dataframe(self, use_current_view: bool = False) -> pl.DataFrame:
+        """Return dataframe with all edits applied.
+        
+        Args:
+            use_current_view: If True, apply edits to current filtered view (self.dataframe).
+                            If False, apply edits to original unfiltered data (self.original_dataframe).
+        
+        This allows exporting either:
+        - The full dataset with edits (use_current_view=False)
+        - Only the filtered/displayed data with edits (use_current_view=True)
+        """
+        # Choose source based on parameter
+        source_df = self.dataframe if use_current_view else (self.original_dataframe if self.original_dataframe is not None else self.dataframe)
+        
+        if source_df is None:
             return None
         
         if not self.edits:
-            # No edits, return original
-            return self.dataframe
+            # No edits, return source
+            return source_df
         
         try:
-            # Convert to Python dict for easier mutation
-            data_dict = self.dataframe.to_dict(as_series=False)
-            
-            # Apply all edits
-            for (row_idx, col_idx), new_value in self.edits.items():
-                col_name = self.dataframe.columns[col_idx]
-                
-                # Try to convert to appropriate type
-                original_value = data_dict[col_name][row_idx]
-                try:
-                    # Attempt type conversion
-                    if isinstance(original_value, int):
-                        data_dict[col_name][row_idx] = int(new_value) if new_value.strip() else None
-                    elif isinstance(original_value, float):
-                        data_dict[col_name][row_idx] = float(new_value) if new_value.strip() else None
-                    else:
-                        data_dict[col_name][row_idx] = new_value
-                except (ValueError, AttributeError):
-                    # Keep as string if conversion fails
-                    data_dict[col_name][row_idx] = new_value
-            
-            # Rebuild Polars dataframe
-            edited_df = pl.DataFrame(data_dict)
-            
+            # Start with a clone of the source dataframe
+            edited_df = source_df.clone()
+
             from loguru import logger
+            logger.debug(f"get_edited_dataframe: Processing {len(self.edits)} edits")
+            if self.edits:
+                logger.debug(f"Sample edits: {list(self.edits.items())[:3]}")
+
+            # Build a fast lookup from _row_hash to row index
+            hash_to_index = {}
+            try:
+                if "_row_hash" in source_df.columns:
+                    hash_to_index = {h: i for i, h in enumerate(source_df["_row_hash"].to_list())}
+            except Exception:
+                hash_to_index = {}
+
+            # Apply edits one column at a time to preserve types
+            for col_name in source_df.columns:
+                if col_name == "_row_hash":
+                    continue
+
+                # Collect only edits for this column and current sheet
+                col_edits = {}
+                for (sheet_name, row_hash, column), new_val in self.edits.items():
+                    if sheet_name != self.current_sheet_name or column != col_name:
+                        continue
+                    idx = hash_to_index.get(row_hash)
+                    if idx is not None:
+                        col_edits[idx] = new_val
+
+                # If no edits for this column, skip
+                if not col_edits:
+                    continue
+
+                # Get the column data as a list
+                col_data = source_df[col_name].to_list()
+
+                # Apply edits to the list (with type-friendly conversion like before)
+                for row_idx, new_value in col_edits.items():
+                    original_value = col_data[row_idx]
+                    try:
+                        if isinstance(original_value, int):
+                            converted = int(new_value) if new_value and new_value.strip() else None
+                            col_data[row_idx] = converted
+                        elif isinstance(original_value, float):
+                            converted = float(new_value) if new_value and new_value.strip() else None
+                            col_data[row_idx] = converted
+                        elif isinstance(original_value, bool):
+                            converted = new_value.lower() in ('true', '1', 'yes') if new_value else None
+                            col_data[row_idx] = converted
+                        else:
+                            col_data[row_idx] = new_value
+                    except (ValueError, AttributeError) as e:
+                        logger.warning(
+                            f"Type conversion failed for {col_name}[{row_idx}]: {original_value} ({type(original_value)}) -> {new_value}. Error: {e}"
+                        )
+                        col_data[row_idx] = new_value
+
+                # Replace the column in the dataframe with strict=False to allow type flexibility
+                try:
+                    edited_df = edited_df.with_columns(
+                        pl.Series(name=col_name, values=col_data, strict=False)
+                    )
+                except Exception as e:
+                    logger.warning(f"Could not apply edits to column {col_name}: {e}")
+                    continue
+
             logger.info(f"Applied {len(self.edits)} edits to dataframe")
-            
+
             return edited_df
-            
+
         except Exception as e:
             from loguru import logger
             logger.error(f"Error creating edited dataframe: {e}")
             # Return original on error
-            return self.dataframe
+            return source_df
 
     def clear_edits(self):
         """Clear all tracked edits."""
         self.edits.clear()
+        self.original_values.clear()
         self._update_edit_counter()
         self._update_table()  # Refresh to remove highlighting
         
@@ -966,35 +1235,50 @@ class PreviewTable(QWidget):
         row_idx = item.row()
         col_idx = item.column()
         
-        # Calculate global row index
+        # Get display data and row hash
+        display_data = self._get_display_data()
+        if display_data is None:
+            return
+        
         start_row = self.current_page * self.rows_per_page
-        global_row_idx = start_row + row_idx
+        end_row = min(start_row + self.rows_per_page, len(display_data))
+        page_data = display_data[start_row:end_row]
+        
+        if row_idx >= len(page_data):
+            return
+        # Map to visible column and compute row hash
+        visible_columns = self._get_visible_columns(display_data)
+        if col_idx < 0 or col_idx >= len(visible_columns):
+            return
+        col_name = visible_columns[col_idx]
+        row_abs_idx = start_row + row_idx
+        row_hash = self._get_row_hash_from_frame(display_data, row_abs_idx)
         
         # Check if this cell is edited
-        if (global_row_idx, col_idx) not in self.edits:
+        if (self.current_sheet_name, row_hash, col_name) not in self.edits:
             return  # Only show menu for edited cells
         
         # Create context menu
         menu = QMenu(self.table_widget)
         
-        # Add undo action with icon
+        # Add undo action
         undo_action = QAction("↶ Undo Edit", menu)
         undo_action.setToolTip("Restore original value")
-        undo_action.triggered.connect(lambda: self._undo_cell_edit(global_row_idx, col_idx, row_idx, col_idx))
+        undo_action.triggered.connect(lambda: self._undo_cell_edit(row_hash, col_name, row_idx, col_idx))
         menu.addAction(undo_action)
         
         # Show the menu at cursor position
         menu.exec(self.table_widget.viewport().mapToGlobal(position))
     
-    def _undo_cell_edit(self, global_row_idx, col_idx, display_row_idx, display_col_idx):
+    def _undo_cell_edit(self, row_hash, col_name, display_row_idx, display_col_idx):
         """Undo edit for a specific cell."""
         try:
             # Get original value
-            original_value = self.original_values.get((global_row_idx, col_idx), "")
+            original_value = self.original_values.get((self.current_sheet_name, row_hash, col_name), "")
             
             # Remove from edits
-            if (global_row_idx, col_idx) in self.edits:
-                del self.edits[(global_row_idx, col_idx)]
+            if (self.current_sheet_name, row_hash, col_name) in self.edits:
+                del self.edits[(self.current_sheet_name, row_hash, col_name)]
             
             # Update the table item
             item = self.table_widget.item(display_row_idx, display_col_idx)
@@ -1015,8 +1299,7 @@ class PreviewTable(QWidget):
             self.table_widget.viewport().update()
             
             from loguru import logger
-            col_name = self.dataframe.columns[col_idx]
-            logger.info(f"Undone edit for cell: row {global_row_idx + 1}, column '{col_name}'")
+            logger.info(f"Undone edit for cell: row hash {row_hash}, column '{col_name}'")
             
         except Exception as e:
             from loguru import logger

@@ -31,6 +31,8 @@ class SimpleFilterPanel(QWidget):
         # Store current filters
         self.current_filters: List[Dict] = []
         self.current_logic: str = "AND"
+        self.edits_at_filter_time: int = 0  # Track edits when filters last applied
+        self.edit_version_at_filter_time: int = 0  # Track edit version when filters last applied
         
         # Set compact size policy (no fixed height to avoid extra gap)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
@@ -201,7 +203,11 @@ class SimpleFilterPanel(QWidget):
         """Set available columns for filtering.
         Columns ending with _v1/_uni are excluded from filtering per requirements.
         Also detect numeric columns (all non-empty values numeric) for dynamic operator display."""
-        self.columns = [col for col in columns if not col.lower().endswith(("_v1", "_uni"))]
+        # Exclude internal/technical columns from filtering
+        self.columns = [
+            col for col in columns
+            if not col.lower().endswith(("_v1", "_uni")) and col != "_row_hash"
+        ]
         self.numeric_columns = []
         
         if dataframe is None:
@@ -289,9 +295,12 @@ class SimpleFilterPanel(QWidget):
                 self.columns,
                 numeric_columns=getattr(self, "numeric_columns", []),
                 current_filters=self.current_filters,
-                current_logic=self.current_logic
+                current_logic=self.current_logic,
+                edits_at_filter_time=self.edits_at_filter_time,
+                edit_version_at_filter_time=self.edit_version_at_filter_time
             )
             self.popup_window.filters_applied.connect(self._on_filters_applied)
+            self.popup_window.edits_baseline_updated.connect(self._update_edits_baseline)
             
             # Show the popup
             self.popup_window.exec()
@@ -303,6 +312,14 @@ class SimpleFilterPanel(QWidget):
             from PyQt6.QtWidgets import QMessageBox
             QMessageBox.critical(self, "Error", f"Failed to open filter manager: {str(e)}")
 
+    def _update_edits_baseline(self, baseline: int):
+        """Update the edits baseline from popup window."""
+        self.edits_at_filter_time = baseline
+        # Also update edit version if we have access to preview_table
+        if hasattr(self.window(), 'preview_table'):
+            self.edit_version_at_filter_time = getattr(self.window().preview_table, 'edit_version', 0)
+        logger.debug(f"Updated edits baseline to {baseline}")
+    
     def _on_filters_applied(self, filters: list, logic: str):
         """Handle filters applied from popup window."""
         logger.info(f"Received filters from popup: {len(filters)} filters with {logic} logic")

@@ -53,6 +53,26 @@ class ExcelReader:
             # This prevents _x000D_ artifacts in display and export
             df = self._sanitize_dataframe(df)
 
+            # Add a stable per-row hash column for fast mapping of edits/filters
+            # Use Polars hash_rows (deterministic) and store as string to match UI keys
+            try:
+                row_hash_series = df.hash_rows(seed=0).cast(pl.Utf8)
+                df = df.with_columns(row_hash_series.alias("_row_hash"))
+            except Exception as e:
+                # Fallback: build a concatenated string and hash via Polars
+                try:
+                    concat = pl.concat_str([pl.col(c).cast(pl.Utf8).fill_null("") for c in df.columns], separator="|")
+                    df = df.with_columns(pl.when(concat.is_not_null())
+                                          .then(concat)
+                                          .otherwise("")
+                                          .alias("__concat_tmp__"))
+                    # Hash via Python apply as last resort (may be slower on huge data)
+                    df = df.with_columns(
+                        pl.col("__concat_tmp__").map_elements(lambda s: str(hash(s))).alias("_row_hash")
+                    ).drop("__concat_tmp__")
+                except Exception as e2:
+                    logger.warning(f"Failed to create _row_hash column: {e} / {e2}")
+
             self.dataframe = df
             logger.info(f"Loaded {len(df)} rows, {len(df.columns)} columns")
             return df

@@ -228,8 +228,9 @@ class PopupFilterWindow(QDialog):
     """Popup window for filter management."""
 
     filters_applied = pyqtSignal(list, str)  # filters, logic (AND/OR)
+    edits_baseline_updated = pyqtSignal(int)  # emits new baseline when filters applied/cleared
 
-    def __init__(self, parent=None, columns: List[str] = None, numeric_columns: List[str] = None, current_filters: List[Dict] = None, current_logic: str = "AND"):
+    def __init__(self, parent=None, columns: List[str] = None, numeric_columns: List[str] = None, current_filters: List[Dict] = None, current_logic: str = "AND", edits_at_filter_time: int = 0, edit_version_at_filter_time: int = 0):
         super().__init__(parent)
         self.columns = columns or []
         self.numeric_columns = numeric_columns or []
@@ -238,6 +239,9 @@ class PopupFilterWindow(QDialog):
         # Store existing filters for editing
         self.current_filters = current_filters or []
         self.current_logic = current_logic
+        self.edits_at_filter_time = edits_at_filter_time  # Receive baseline from parent
+        self.edit_version_at_filter_time = edit_version_at_filter_time  # Track edit version
+        self.filter_manager = parent  # Reference to main window to check current edit count
         
         self.setWindowTitle("🔍 Advanced Filter Manager")
         self.setModal(True)
@@ -312,6 +316,21 @@ class PopupFilterWindow(QDialog):
         )
         add_filter_btn.clicked.connect(self._add_filter_rule)
         add_section.addWidget(add_filter_btn)
+
+        # Warning label for edits made after filtering
+        self.edit_warning_label = QLabel("⚠️ Changes detected! Click 'Apply Filters' to refresh results with your edits.")
+        self.edit_warning_label.setFont(QFont("Segoe UI", 10, QFont.Weight.Bold))
+        self.edit_warning_label.setStyleSheet("""
+            QLabel {
+                color: #dc3545;
+                background-color: #fff3cd;
+                border: 2px solid #ffc107;
+                border-radius: 6px;
+                padding: 8px 12px;
+            }
+        """)
+        self.edit_warning_label.setVisible(False)  # Hidden by default
+        add_section.addWidget(self.edit_warning_label)
 
         add_section.addStretch()
         main_layout.addLayout(add_section)
@@ -544,6 +563,14 @@ class PopupFilterWindow(QDialog):
         logger.info(f"Applying {len(filters)} filters with logic: {logic}")
         self.filters_applied.emit(filters, logic)
         
+        # Store the current edit count and version when filters are applied
+        # This sets the baseline - only edits AFTER this point will trigger warning
+        if hasattr(self.filter_manager, 'preview_table'):
+            self.edits_at_filter_time = len(self.filter_manager.preview_table.edits)
+            self.edit_version_at_filter_time = getattr(self.filter_manager.preview_table, 'edit_version', 0)
+            # Notify parent to store the baseline
+            self.edits_baseline_updated.emit(self.edits_at_filter_time)
+        
         # Show success message and close
         QMessageBox.information(self, "Filters Applied", f"Successfully applied {len(filters)} filters with {logic} logic")
         self.close()
@@ -552,6 +579,13 @@ class PopupFilterWindow(QDialog):
         """Clear all filter rules."""
         for rule in self.filter_rules[:]:
             self._remove_filter_rule(rule)
+        
+        # Reset the edit baseline when filters are cleared
+        # This prevents showing warning when reopening after clear
+        self.edits_at_filter_time = 0
+        self.edit_version_at_filter_time = 0
+        # Notify parent to reset the baseline
+        self.edits_baseline_updated.emit(0)
         
         logger.info("All popup filters cleared")
         # Emit empty filters to reset data
@@ -599,3 +633,25 @@ class PopupFilterWindow(QDialog):
         except Exception as e:
             logger.error(f"Error loading existing filters: {e}")
             # If loading fails, just start with empty filters
+    
+    def showEvent(self, event):
+        """Override showEvent to check for edits when window is shown."""
+        super().showEvent(event)
+        self._check_for_edits()
+    
+    def _check_for_edits(self):
+        """Check if edits were made after the last filter application and show warning."""
+        try:
+            if hasattr(self.filter_manager, 'preview_table'):
+                current_edit_version = getattr(self.filter_manager.preview_table, 'edit_version', 0)
+                
+                # Show warning if edit version changed (indicates ANY edit activity after filters)
+                # This catches both new edits AND re-edits of same cells
+                if current_edit_version > self.edit_version_at_filter_time and self.edit_version_at_filter_time > 0:
+                    self.edit_warning_label.setVisible(True)
+                else:
+                    self.edit_warning_label.setVisible(False)
+        except Exception as e:
+            from loguru import logger
+            logger.debug(f"Could not check for edits: {e}")
+            self.edit_warning_label.setVisible(False)

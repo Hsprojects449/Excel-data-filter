@@ -129,6 +129,43 @@ class SheetSelectionThread(QThread):
             self.error.emit(str(e))
 
 
+class SheetCacheThread(QThread):
+    """Worker thread for caching sheets in background."""
+
+    sheet_cached = pyqtSignal(str, int)  # sheet_name, row_count
+    all_cached = pyqtSignal(list)  # all sheet names when complete
+    error = pyqtSignal(str, str)  # sheet_name, error_message
+
+    def __init__(self, filepath: str, sheet_names: list, current_sheet: str):
+        super().__init__()
+        self.filepath = filepath
+        self.sheet_names = sheet_names
+        self.current_sheet = current_sheet
+        self.cached_data = {}
+
+    def run(self):
+        """Cache all sheets except the current one."""
+        try:
+            reader = ExcelReader(self.filepath)
+            for sheet_name in self.sheet_names:
+                if sheet_name == self.current_sheet:
+                    continue  # Skip current sheet (already loaded)
+                
+                try:
+                    df = reader.read_sheet(sheet_name)
+                    self.cached_data[sheet_name] = df
+                    self.sheet_cached.emit(sheet_name, len(df))
+                except Exception as e:
+                    logger.error(f"Failed to cache sheet '{sheet_name}': {e}")
+                    self.error.emit(sheet_name, str(e))
+            
+            # Signal completion
+            self.all_cached.emit(list(self.cached_data.keys()))
+        except Exception as e:
+            logger.error(f"Sheet cache thread error: {e}")
+            self.error.emit("CACHE_THREAD", str(e))
+
+
 class MainWindow(QMainWindow):
     """Main application window."""
 
@@ -153,6 +190,7 @@ class MainWindow(QMainWindow):
         self.current_sheet: str = None    # Track current sheet name
         self.excel_reader: ExcelReader = None  # Store excel reader for sheet operations
         self.sheet_cache: dict = {}  # Cache for loaded sheets data
+        self.cache_thread = None  # Background sheet caching thread
 
         # Initialize UI
         self._init_ui()
@@ -545,15 +583,22 @@ class MainWindow(QMainWindow):
         # Set the current data
         self.current_dataframe = dataframe
         
-        # Update preview table
-        self.preview_table.set_data(dataframe)
+        # Set current sheet name for edit tracking BEFORE loading data
+        self.preview_table.current_sheet_name = sheet_name
         
-        # Update filters for new sheet columns
+        # Update preview table (original data, not filtered)
+        self.preview_table.set_data(dataframe, is_filtered=False)
+        
+        # Update filters for new sheet columns (skip if same structure as before)
         columns = dataframe.columns if hasattr(dataframe.columns, 'tolist') else dataframe.columns
         if hasattr(columns, 'tolist'):
             columns = columns.tolist()
-        # Pass dataframe for numeric column detection
-        self.filter_panel.set_columns(columns, dataframe)
+        
+        # Only update filter panel if columns changed (performance optimization)
+        current_filter_cols = getattr(self.filter_panel, 'columns', None)
+        if current_filter_cols is None or set(current_filter_cols) != set(columns):
+            # Pass dataframe for numeric column detection
+            self.filter_panel.set_columns(columns, dataframe)
         
         # Log success
         from loguru import logger
@@ -643,35 +688,46 @@ class MainWindow(QMainWindow):
         # Skip if only one sheet or already cached
         if len(sheet_names) <= 1:
             return
-            
-        # Start caching in background
-        from PyQt6.QtCore import QTimer
         
-        def cache_next_sheet():
-            # Find next uncached sheet
-            for sheet_name in sheet_names:
-                if sheet_name not in self.sheet_cache and sheet_name != self.current_sheet:
-                    try:
-                        # Load sheet data
-                        df = self.excel_reader.read_sheet(sheet_name)
-                        self.sheet_cache[sheet_name] = df
-                        
-                        from loguru import logger
-                        logger.info(f"Cached sheet '{sheet_name}' ({len(df)} rows)")
-                        
-                        # Schedule next sheet
-                        QTimer.singleShot(100, cache_next_sheet)
-                        return
-                    except Exception as e:
-                        from loguru import logger
-                        logger.error(f"Failed to cache sheet '{sheet_name}': {e}")
-                        continue
-            
-            # All sheets cached, update UI
-            self._setup_sheet_switcher(sheet_names)
+        # Stop any existing cache thread
+        if self.cache_thread and self.cache_thread.isRunning():
+            self.cache_thread.quit()
+            self.cache_thread.wait()
         
-        # Start caching after current sheet loads
-        QTimer.singleShot(1000, cache_next_sheet)
+        # Start background caching thread
+        self.cache_thread = SheetCacheThread(
+            self.current_filepath,
+            sheet_names,
+            self.current_sheet
+        )
+        
+        # Connect signals
+        self.cache_thread.sheet_cached.connect(self._on_sheet_cached)
+        self.cache_thread.all_cached.connect(self._on_all_sheets_cached)
+        self.cache_thread.error.connect(self._on_cache_error)
+        
+        # Start caching
+        self.cache_thread.start()
+        logger.info(f"Started background caching for {len(sheet_names)-1} sheets")
+    
+    def _on_sheet_cached(self, sheet_name: str, row_count: int):
+        """Handle individual sheet cached event."""
+        # Store cached data from thread
+        if self.cache_thread and sheet_name in self.cache_thread.cached_data:
+            self.sheet_cache[sheet_name] = self.cache_thread.cached_data[sheet_name]
+            logger.info(f"Cached sheet '{sheet_name}' ({row_count:,} rows)")
+    
+    def _on_all_sheets_cached(self, cached_sheets: list):
+        """Handle all sheets cached completion."""
+        logger.info(f"Background caching complete: {len(cached_sheets)} sheets cached")
+        # Update sheet switcher to reflect all cached sheets
+        all_sheets = [self.current_sheet] + cached_sheets
+        self._setup_sheet_switcher(all_sheets)
+    
+    def _on_cache_error(self, sheet_name: str, error_msg: str):
+        """Handle sheet caching error."""
+        logger.error(f"Cache error for sheet '{sheet_name}': {error_msg}")
+
     
     def _setup_sheet_switcher(self, sheet_names: list):
         """Setup the sheet switcher with all available sheets."""
@@ -738,8 +794,11 @@ class MainWindow(QMainWindow):
             # Fallback without numeric detection if something unexpected occurs
             self.filter_panel.set_columns(df.columns)
 
-        # Update preview table
-        self.preview_table.set_data(df)
+        # Set current sheet name for edit tracking BEFORE loading data
+        self.preview_table.current_sheet_name = self.current_sheet
+
+        # Update preview table (original data, not filtered)
+        self.preview_table.set_data(df, is_filtered=False)
 
         # Setup sheet switcher and auto-cache for multi-sheet files
         if len(self.available_sheets) > 1:
@@ -767,7 +826,9 @@ class MainWindow(QMainWindow):
 
     def _on_filters_applied(self, filters: list, logic: str):
         """Handle filters applied from filter panel."""
-        # If no filters (clear was clicked), show original data
+        from loguru import logger
+        
+        # If no filters (clear was clicked), show original data with edits
         if not filters:
             # Check if data is loaded before trying to display
             if self.current_dataframe is None:
@@ -775,7 +836,8 @@ class MainWindow(QMainWindow):
                 self.status_label.setText("❌ No data loaded")
                 return
             
-            self.preview_table.set_data(self.current_dataframe)
+            # Show original data (set_data preserves edits via row hash)
+            self.preview_table.set_data(self.current_dataframe, is_filtered=False)
             self.status_label.setText(
                 f"✅ Showing original data: {len(self.current_dataframe):,} rows"
             )
@@ -790,8 +852,22 @@ class MainWindow(QMainWindow):
             self.status_label.setText("Filtering data...")
             self.progress_bar.setVisible(True)
 
-            # Clear previous filters
-            self.filter_engine.clear_filters()
+            # Get the edited dataframe from preview table (includes any user edits)
+            edited_df = self.preview_table.get_edited_dataframe()
+            if edited_df is None:
+                edited_df = self.current_dataframe
+            
+            # Debug: Log filter column values from edited dataframe
+            if len(edited_df) > 0 and filters:
+                filter_col = filters[0]["column"]
+                filter_val = filters[0]["value"]
+                if filter_col in edited_df.columns:
+                    col_values = edited_df[filter_col].to_list()
+                    logger.debug(f"Filtering {filter_col} for '{filter_val}'. Column values in edited_df: {col_values[:10]}")
+                logger.debug(f"Total edits in preview: {len(self.preview_table.edits)}")
+            
+            # Create a new filter engine with the edited dataframe
+            filter_engine = FilterEngine(edited_df)
 
             # Apply new filters
             for filter_data in filters:
@@ -823,16 +899,29 @@ class MainWindow(QMainWindow):
 
                 engine_operator = operator_map.get(operator, "contains")
                 rule = EngineFilterRule(column, engine_operator, value)
-                self.filter_engine.add_filter(rule)
+                filter_engine.add_filter(rule)
 
-            # Apply all filters with specified logic
-            filtered_df = self.filter_engine.apply_filters(logic=logic)
+            # Apply all filters with specified logic on the edited dataframe
+            filtered_df_with_edits = filter_engine.apply_filters(logic=logic)
+            
+            # Fast mapping back to original using stable row hashes
+            import polars as pl
+            if len(filtered_df_with_edits) > 0:
+                if "_row_hash" in filtered_df_with_edits.columns and "_row_hash" in self.current_dataframe.columns:
+                    filtered_df = self.current_dataframe.filter(
+                        pl.col("_row_hash").is_in(filtered_df_with_edits["_row_hash"]) 
+                    )
+                else:
+                    # Fallback to empty if hash is somehow missing
+                    filtered_df = self.current_dataframe.head(0)
+            else:
+                filtered_df = self.current_dataframe.head(0)  # Empty with same schema
 
-            # Update preview with filtered data
-            self.preview_table.set_data(filtered_df)
+            # Update preview with filtered ORIGINAL data (edits preserved separately)
+            self.preview_table.set_data(filtered_df, is_filtered=True)
 
             # Update statistics
-            stats = self.filter_engine.get_statistics()
+            stats = filter_engine.get_statistics()
             self.status_label.setText(
                 f"✅ Filtered: {stats['filtered_rows']:,} rows "
                 f"(removed {stats['rows_removed']:,} rows) | Logic: {logic}"
@@ -847,32 +936,84 @@ class MainWindow(QMainWindow):
         finally:
             self.progress_bar.setVisible(False)
 
+    def _apply_edits_to_dataframe(self, df: pl.DataFrame) -> pl.DataFrame:
+        """Apply preview table edits to any dataframe (preserving order)."""
+        if df is None or not self.preview_table.edits:
+            return df
+        
+        try:
+            import polars as pl
+            edited_df = df.clone()
+            
+            # Build hash->index map if available
+            hash_to_index = {}
+            try:
+                if "_row_hash" in df.columns:
+                    hash_to_index = {h: i for i, h in enumerate(df["_row_hash"].to_list())}
+            except Exception:
+                hash_to_index = {}
+
+            # Apply edits column by column
+            for col_name in df.columns:
+                if col_name == "_row_hash":
+                    continue
+
+                # Collect edits for this column
+                col_edits = {}
+                for (sheet, row_hash, column), new_val in self.preview_table.edits.items():
+                    if sheet != self.preview_table.current_sheet_name or column != col_name:
+                        continue
+                    idx = hash_to_index.get(row_hash)
+                    if idx is not None:
+                        col_edits[idx] = new_val
+                
+                if not col_edits:
+                    continue
+                
+                # Get column data and apply edits
+                col_data = df[col_name].to_list()
+                for row_idx, new_value in col_edits.items():
+                    original_value = col_data[row_idx]
+                    try:
+                        if isinstance(original_value, int):
+                            col_data[row_idx] = int(new_value) if new_value and new_value.strip() else None
+                        elif isinstance(original_value, float):
+                            col_data[row_idx] = float(new_value) if new_value and new_value.strip() else None
+                        elif isinstance(original_value, bool):
+                            col_data[row_idx] = new_value.lower() in ('true', '1', 'yes') if new_value else None
+                        else:
+                            col_data[row_idx] = new_value
+                    except (ValueError, AttributeError):
+                        col_data[row_idx] = new_value
+                
+                # Replace column
+                edited_df = edited_df.with_columns(
+                    pl.Series(name=col_name, values=col_data, strict=False)
+                )
+            
+            return edited_df
+        except Exception as e:
+            from loguru import logger
+            logger.error(f"Error applying edits for export: {e}")
+            return df
+
     def _export_data(self):
         """Export filtered data to Excel with enhanced progress feedback."""
         if self.filter_engine is None or self.current_dataframe is None:
             QMessageBox.warning(self, "Warning", "No data loaded to export")
             return
 
-        # Get filtered data with any edits applied from preview table
-        filtered_data = self.filter_engine.get_filtered_data()
+        # Get the data exactly as displayed (with sorting applied)
+        display_data = self.preview_table._get_display_data()
         
-        # Apply any edits from the preview table
-        edited_data = self.preview_table.get_edited_dataframe()
-        if edited_data is not None:
-            # If edits exist, use edited dataframe
-            # Filter it to match current filter state if filters are applied
-            if self.filter_engine.applied_filters:
-                # Rebuild filter on edited data
-                from core.filter_engine import FilterEngine
-                temp_engine = FilterEngine(edited_data)
-                for rule in self.filter_engine.applied_filters:
-                    temp_engine.add_filter(rule)
-                filtered_data = temp_engine.apply_filters(logic=self.filter_engine.filter_logic)
-            else:
-                # No filters, use edited data as-is
-                filtered_data = edited_data
+        # Apply edits to match what user sees
+        if self.preview_table.edits and display_data is not None:
+            # Apply edits to the already sorted/filtered display data
+            export_data = self._apply_edits_to_dataframe(display_data)
+        else:
+            export_data = display_data
         
-        exporter = ExcelExporter(filtered_data)
+        exporter = ExcelExporter(export_data)
         export_info = exporter.get_export_info()
 
         # Show export information dialog first

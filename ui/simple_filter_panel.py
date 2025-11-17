@@ -138,7 +138,52 @@ class SimpleFilterPanel(QWidget):
         """)
         layout.addWidget(self.status_label)
 
-        layout.addStretch()  # Push everything to the left
+        layout.addStretch()  # Push edit controls to the right
+        
+        # Edit counter label (will be controlled by preview_table)
+        self.edit_counter_label = QLabel("✏️ Edits: 0")
+        self.edit_counter_label.setFont(QFont("Segoe UI", 11, QFont.Weight.Bold))
+        self.edit_counter_label.setStyleSheet("""
+            QLabel {
+                color: #e67e22;
+                padding: 6px 12px;
+                background: #fff3e0;
+                border: 1px solid #ffb74d;
+                border-radius: 6px;
+            }
+        """)
+        self.edit_counter_label.setVisible(False)  # Hidden until edits are made
+        layout.addWidget(self.edit_counter_label)
+        
+        # Undo all button (will be controlled by preview_table)
+        self.undo_all_btn = QPushButton("↶ Undo All")
+        self.undo_all_btn.setMinimumHeight(34)
+        self.undo_all_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self.undo_all_btn.setStyleSheet("""
+            QPushButton {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #e67e22, stop:1 #d35400);
+                color: white;
+                border: 2px solid rgba(255, 255, 255, 0.2);
+                border-radius: 10px;
+                padding: 8px 16px;
+                font-weight: bold;
+                font-size: 12px;
+                font-family: 'Segoe UI';
+            }
+            QPushButton:hover {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #d35400, stop:1 #c0392b);
+                border: 2px solid rgba(255, 255, 255, 0.4);
+                cursor: pointer;
+            }
+            QPushButton:pressed {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #c0392b, stop:1 #a93226);
+            }
+        """)
+        self.undo_all_btn.setVisible(False)  # Hidden until edits are made
+        layout.addWidget(self.undo_all_btn)
 
         self.setLayout(layout)
         

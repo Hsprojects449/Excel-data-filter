@@ -451,6 +451,11 @@ class MainWindow(QMainWindow):
         # Start hidden until data loaded
         self.preview_table.setVisible(False)
         content_layout.addWidget(self.preview_table, 1)
+        
+        # Connect edit controls from filter panel to preview table
+        self.preview_table.edit_counter_label = self.filter_panel.edit_counter_label
+        self.preview_table.undo_all_btn = self.filter_panel.undo_all_btn
+        self.filter_panel.undo_all_btn.clicked.connect(self.preview_table.clear_edits)
 
         content_widget.setLayout(content_layout)
         scroll_area.setWidget(content_widget)
@@ -848,8 +853,25 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Warning", "No data loaded to export")
             return
 
-        # Get export information
+        # Get filtered data with any edits applied from preview table
         filtered_data = self.filter_engine.get_filtered_data()
+        
+        # Apply any edits from the preview table
+        edited_data = self.preview_table.get_edited_dataframe()
+        if edited_data is not None:
+            # If edits exist, use edited dataframe
+            # Filter it to match current filter state if filters are applied
+            if self.filter_engine.applied_filters:
+                # Rebuild filter on edited data
+                from core.filter_engine import FilterEngine
+                temp_engine = FilterEngine(edited_data)
+                for rule in self.filter_engine.applied_filters:
+                    temp_engine.add_filter(rule)
+                filtered_data = temp_engine.apply_filters(logic=self.filter_engine.filter_logic)
+            else:
+                # No filters, use edited data as-is
+                filtered_data = edited_data
+        
         exporter = ExcelExporter(filtered_data)
         export_info = exporter.get_export_info()
 

@@ -430,6 +430,11 @@ class PreviewTable(QWidget):
 
         # Table with enhanced scrolling
         self.table_widget = QTableWidget()
+        
+        # Enable touch events for Windows 11 trackpad support
+        self.table_widget.setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
+        self.table_widget.viewport().setAttribute(Qt.WidgetAttribute.WA_AcceptTouchEvents, True)
+        
         # Prefer a font that supports Indic scripts so Telugu renders correctly
         try:
             self.table_widget.setFont(QFont("Nirmala UI", 11))
@@ -588,15 +593,19 @@ class PreviewTable(QWidget):
             properties.setScrollMetric(QScrollerProperties.ScrollMetric.AxisLockThreshold, 0.7)
             
             scroller.setScrollerProperties(properties)
+            # Enable both LeftMouseButton and Touch gestures for Windows 11 compatibility
+            QScroller.grabGesture(self.table_widget, QScroller.ScrollerGestureType.LeftMouseButtonGesture)
             QScroller.grabGesture(self.table_widget, QScroller.ScrollerGestureType.TouchGesture)
             
             # Also apply to viewport for better coverage
             viewport_scroller = QScroller.scroller(self.table_widget.viewport())
             viewport_scroller.setScrollerProperties(properties)
             QScroller.grabGesture(self.table_widget.viewport(), 
+                                QScroller.ScrollerGestureType.LeftMouseButtonGesture)
+            QScroller.grabGesture(self.table_widget.viewport(), 
                                 QScroller.ScrollerGestureType.TouchGesture)
             
-            logger.info("Table kinetic scrolling enabled")
+            logger.info("Table kinetic scrolling enabled with Windows 11 trackpad support")
         except Exception as e:
             logger.debug(f"QScroller not available for table: {e}")
             # Fallback: Ensure at least basic smooth scrolling

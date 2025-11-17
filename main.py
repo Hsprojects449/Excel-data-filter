@@ -4,16 +4,16 @@ Main entry point for the Excel Data Filter application.
 
 import sys
 import os
-from PyQt6.QtWidgets import QApplication
-from PyQt6.QtGui import QIcon
-from ui.main_window import MainWindow
-from services.logger import logger
 
 __version__ = "1.0.0"
 
 
 def main():
     """Main application entry point."""
+    # Import heavy modules only after showing splash or initial window
+    # This provides faster perceived startup time
+    from services.logger import logger
+    
     logger.info(f"Excel Data Filter v{__version__} starting...")
 
     # On Windows, set AppUserModelID so the taskbar uses our app identity/icon
@@ -26,6 +26,10 @@ def main():
         except Exception as e:
             logger.debug(f"Failed to set AppUserModelID: {e}")
 
+    # Import PyQt6 here for faster initial launch
+    from PyQt6.QtWidgets import QApplication
+    from PyQt6.QtGui import QIcon
+    
     app = QApplication(sys.argv)
 
     # Resolve icon path for both dev and PyInstaller (frozen) environments
@@ -152,6 +156,9 @@ def main():
             app.setWindowIcon(QIcon(fallback_jpg))
         else:
             logger.warning(f"App icon not found at {icon_path}")
+    
+    # Import MainWindow here (after QApplication created) for faster startup
+    from ui.main_window import MainWindow
     
     window = MainWindow()
     # Ensure main window also has the ICO icon explicitly for consistency

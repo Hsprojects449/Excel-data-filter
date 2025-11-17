@@ -673,28 +673,60 @@ class PreviewTable(QWidget):
         # Apply sorting if a column is selected (skip internal columns)
         if self.sort_column and self.sort_column in display_data.columns and self.sort_column != "_row_hash":
             try:
+                original_dtype = display_data[self.sort_column].dtype
+                is_string_column = original_dtype in (pl.String, pl.Utf8)
+                
                 # If there are edits and we're sorting on an edited column, sort by a patched series
                 if self.edits and self._column_has_edits(self.sort_column):
                     base = display_data[self.sort_column].to_list()
+                    
                     # Build a fast index by row hash once
                     try:
                         hash_to_index = {h: i for i, h in enumerate(display_data["_row_hash"].to_list())}
                     except Exception:
                         hash_to_index = {}
-                    # Apply only edited values for this column
+                    
+                    # Apply only edited values for this column, preserving type
                     for (sheet, row_hash, col) in list(self.edits.keys()):
                         if sheet != self.current_sheet_name or col != self.sort_column:
                             continue
                         idx = hash_to_index.get(row_hash)
                         if idx is not None and 0 <= idx < len(base):
-                            base[idx] = self.edits[(sheet, row_hash, col)]
-                    # Use a temporary column for sorting
-                    display_data = display_data.with_columns(
-                        pl.Series(name="__temp_sort__", values=base, strict=False)
-                    ).sort("__temp_sort__", descending=not self.sort_ascending).drop("__temp_sort__")
+                            edited_value = self.edits[(sheet, row_hash, col)]
+                            # Convert to correct type for numeric columns
+                            try:
+                                if original_dtype in (pl.Int64, pl.Int32, pl.Int16, pl.Int8):
+                                    base[idx] = int(edited_value) if edited_value and str(edited_value).strip() else None
+                                elif original_dtype in (pl.Float64, pl.Float32):
+                                    base[idx] = float(edited_value) if edited_value and str(edited_value).strip() else None
+                                else:
+                                    base[idx] = edited_value
+                            except (ValueError, TypeError):
+                                base[idx] = edited_value
+                    
+                    # For string columns, create lowercase version for case-insensitive sorting
+                    if is_string_column:
+                        # Create lowercase sort key while preserving original values
+                        sort_key = [str(v).lower() if v is not None else "" for v in base]
+                        display_data = display_data.with_columns([
+                            pl.Series(name="__temp_sort__", values=base, dtype=original_dtype, strict=False),
+                            pl.Series(name="__sort_key__", values=sort_key, dtype=pl.Utf8)
+                        ]).sort("__sort_key__", descending=not self.sort_ascending).drop(["__temp_sort__", "__sort_key__"])
+                    else:
+                        # Numeric columns - sort directly
+                        display_data = display_data.with_columns(
+                            pl.Series(name="__temp_sort__", values=base, dtype=original_dtype, strict=False)
+                        ).sort("__temp_sort__", descending=not self.sort_ascending).drop("__temp_sort__")
                 else:
-                    # No edits in this column, use normal sorting
-                    display_data = display_data.sort(self.sort_column, descending=not self.sort_ascending)
+                    # No edits in this column, use normal sorting with case-insensitive for strings
+                    if is_string_column:
+                        # Case-insensitive sort for string columns
+                        display_data = display_data.with_columns(
+                            pl.col(self.sort_column).str.to_lowercase().alias("__sort_key__")
+                        ).sort("__sort_key__", descending=not self.sort_ascending).drop("__sort_key__")
+                    else:
+                        # Normal sort for numeric/date columns
+                        display_data = display_data.sort(self.sort_column, descending=not self.sort_ascending)
             except Exception as e:
                 # If sorting fails, use unsorted data
                 from loguru import logger

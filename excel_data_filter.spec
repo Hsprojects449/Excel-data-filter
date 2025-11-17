@@ -4,40 +4,26 @@ import os
 import glob
 from PyInstaller.utils.hooks import collect_all
 
-# Collect all data from packages that might have hidden imports
+# Collect only essential data from packages (lazy loading for faster startup)
 datas = []
 binaries = []
 hiddenimports = []
 
-# Collect PyQt6 data
+# Only collect binaries and essential data, skip unnecessary package data
+# This significantly reduces startup time by avoiding full collection
 pyqt6_datas, pyqt6_binaries, pyqt6_hiddenimports = collect_all('PyQt6')
-datas.extend(pyqt6_datas)
 binaries.extend(pyqt6_binaries)
 hiddenimports.extend(pyqt6_hiddenimports)
 
-# Collect polars and other data analysis libraries
+# Polars - only binaries needed
 polars_datas, polars_binaries, polars_hiddenimports = collect_all('polars')
-datas.extend(polars_datas)
 binaries.extend(polars_binaries)
 hiddenimports.extend(polars_hiddenimports)
 
-# Collect fastexcel (used by polars for Excel reading)
+# Fastexcel - minimal collection
 fastexcel_datas, fastexcel_binaries, fastexcel_hiddenimports = collect_all('fastexcel')
-datas.extend(fastexcel_datas)
 binaries.extend(fastexcel_binaries)
 hiddenimports.extend(fastexcel_hiddenimports)
-
-# Collect xlsxwriter (for Excel export functionality)
-xlsxwriter_datas, xlsxwriter_binaries, xlsxwriter_hiddenimports = collect_all('xlsxwriter')
-datas.extend(xlsxwriter_datas)
-binaries.extend(xlsxwriter_binaries)
-hiddenimports.extend(xlsxwriter_hiddenimports)
-
-# Collect openpyxl (for Excel metadata and compatibility)
-openpyxl_datas, openpyxl_binaries, openpyxl_hiddenimports = collect_all('openpyxl')
-datas.extend(openpyxl_datas)
-binaries.extend(openpyxl_binaries)
-hiddenimports.extend(openpyxl_hiddenimports)
 
 # Include local UI assets (icons/images) so they are available at runtime
 assets_root = os.path.join('ui', 'assets')
@@ -47,28 +33,15 @@ if os.path.isdir(assets_root):
             rel_dir = os.path.dirname(os.path.relpath(f, start='.'))
             datas.append((f, rel_dir))
 
-# Additional hidden imports for Excel processing
+# Additional hidden imports for Excel processing (minimal list)
 hiddenimports.extend([
     'polars',
-    'polars.io',
-    'polars.io.csv',
     'fastexcel',
-    'openpyxl',
-    'openpyxl.styles',
-    'openpyxl.utils',
     'xlsxwriter',
-    'xlsxwriter.workbook',
-    'xlsxwriter.worksheet', 
-    'xlsxwriter.format',
     'loguru',
-    'pathlib',
-    'tempfile',
-    'shutil',
-    'json',
     'PyQt6.QtCore',
     'PyQt6.QtGui', 
     'PyQt6.QtWidgets',
-    'PyQt6.sip'
 ])
 
 a = Analysis(
@@ -79,10 +52,17 @@ a = Analysis(
     hiddenimports=hiddenimports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
-    excludes=[],
+    runtime_hooks=['runtime_hook.py'],  # Add startup optimization hook
+    excludes=[
+        # Exclude unnecessary modules to reduce size and startup time
+        'matplotlib', 'numpy.testing', 'scipy', 'pandas.tests',
+        'pytest', 'unittest', 'doctest', 'pdb', 'tkinter',
+        'IPython', 'notebook', 'jupyter', 'PIL.ImageQt',
+        'polars.testing', 'polars.testing.parametric',  # Exclude testing modules
+        'hypothesis',  # Testing library not needed
+    ],
     noarchive=False,
-    optimize=0,
+    optimize=2,  # Enable Python bytecode optimization
 )
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=None)
@@ -98,7 +78,11 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
+    upx_exclude=[
+        # Exclude large DLLs from UPX compression for faster startup
+        'Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Widgets.dll',
+        'python3.dll', 'python311.dll',
+    ],
     runtime_tmpdir=None,
     console=False,  # Set to True if you want console window for debugging
     disable_windowed_traceback=False,
